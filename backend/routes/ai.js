@@ -22,7 +22,9 @@ router.get("/status", (req, res) => {
 router.post("/analyze/:memoryId", async (req, res, next) => {
   try {
     if (!gemini.enabled) {
-      return res.status(503).json({ error: "AI features not configured" });
+      return res
+        .status(503)
+        .json({ error: "AI features not configured. Set GEMINI_API_KEY." });
     }
 
     const memory = await Memory.findById(req.params.memoryId).lean();
@@ -54,7 +56,8 @@ router.post("/analyze/:memoryId", async (req, res, next) => {
 
     res.json(analysis);
   } catch (err) {
-    next(err);
+    console.error("AI analyze error:", err.message);
+    res.status(500).json({ error: err.message || "AI analysis failed" });
   }
 });
 
@@ -123,6 +126,7 @@ router.get("/highlights", async (req, res, next) => {
         }
       } catch (e) {
         console.error("Failed to generate weekly story:", e.message);
+        // Don't fail the whole request — just skip the story
       }
     }
 
@@ -144,7 +148,8 @@ router.get("/highlights", async (req, res, next) => {
       stats: { totalMemories, totalPhotos, totalVideos },
     });
   } catch (err) {
-    next(err);
+    console.error("AI highlights error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to load highlights" });
   }
 });
 
@@ -155,7 +160,9 @@ router.get("/highlights", async (req, res, next) => {
 router.post("/chat", async (req, res, next) => {
   try {
     if (!gemini.enabled) {
-      return res.status(503).json({ error: "AI features not configured" });
+      return res
+        .status(503)
+        .json({ error: "AI features not configured. Set GEMINI_API_KEY." });
     }
 
     const { message } = req.body;
@@ -179,7 +186,8 @@ router.post("/chat", async (req, res, next) => {
     const reply = await gemini.chat(message, memorySummary);
     res.json({ reply });
   } catch (err) {
-    next(err);
+    console.error("AI chat error:", err.message);
+    res.status(500).json({ error: err.message || "AI chat failed" });
   }
 });
 

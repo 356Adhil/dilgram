@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../../timeline/presentation/timeline_screen.dart';
 import '../../ai/presentation/ai_screen.dart';
+import '../../../services/upload_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -43,6 +44,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final uploadCount = ref.watch(activeUploadCountProvider);
+
     return Scaffold(
       body: Stack(
         children: [
@@ -51,6 +54,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             physics: const NeverScrollableScrollPhysics(),
             children: const [TimelineScreen(), AiScreen()],
           ),
+
+          // Upload indicator — subtle bar at top
+          if (uploadCount > 0)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: const LinearProgressIndicator(minHeight: 2),
+              ),
+            ),
 
           // Floating bottom nav
           Positioned(

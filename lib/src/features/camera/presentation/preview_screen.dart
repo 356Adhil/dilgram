@@ -147,10 +147,14 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
           // Preview
           if (widget.isVideo && _videoController != null)
             _videoController!.value.isInitialized
-                ? Center(
-                    child: AspectRatio(
-                      aspectRatio: _videoController!.value.aspectRatio,
-                      child: VideoPlayer(_videoController!),
+                ? SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: SizedBox(
+                        width: _videoController!.value.size.width,
+                        height: _videoController!.value.size.height,
+                        child: VideoPlayer(_videoController!),
+                      ),
                     ),
                   )
                 : const Center(

@@ -67,6 +67,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
         if (mounted) {
           _chewieController = ChewieController(
             videoPlayerController: _videoPlayerController!,
+            aspectRatio: _videoPlayerController!.value.aspectRatio,
             autoPlay: true,
             looping: false,
             showControls: true,
@@ -563,14 +564,27 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
   Widget _buildVideoView(MediaItem item) {
     if (_chewieController != null &&
         _videoPlayerController!.value.isInitialized) {
-      return Center(child: Chewie(controller: _chewieController!));
+      final videoAspect = _videoPlayerController!.value.aspectRatio;
+      return Center(
+        child: AspectRatio(
+          aspectRatio: videoAspect,
+          child: Chewie(controller: _chewieController!),
+        ),
+      );
     }
 
     return Stack(
       fit: StackFit.expand,
       children: [
         if (item.thumbnailUrl != null)
-          CachedNetworkImage(imageUrl: item.thumbnailUrl!, fit: BoxFit.contain),
+          Center(
+            child: CachedNetworkImage(
+              imageUrl: item.thumbnailUrl!,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
         const Center(
           child: CircularProgressIndicator(
             color: Colors.white38,

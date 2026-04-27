@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,13 +60,17 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMsg = 'Sorry, something went wrong. Try again!';
+        if (e is DioException) {
+          final serverError = e.response?.data;
+          if (serverError is Map && serverError['error'] != null) {
+            errorMsg = '${serverError['error']}';
+          } else if (e.type == DioExceptionType.connectionError) {
+            errorMsg = 'Cannot connect to server. Check your internet.';
+          }
+        }
         setState(() {
-          _messages.add(
-            _ChatMessage(
-              text: 'Sorry, I couldn\'t process that. Try again!',
-              isUser: false,
-            ),
-          );
+          _messages.add(_ChatMessage(text: errorMsg, isUser: false));
           _isSending = false;
         });
       }
@@ -111,8 +116,20 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMsg = 'Failed to analyze. Try again.';
+        if (e is DioException) {
+          final serverError = e.response?.data;
+          if (serverError is Map && serverError['error'] != null) {
+            errorMsg = '${serverError['error']}';
+          } else if (e.type == DioExceptionType.connectionError) {
+            errorMsg = 'Cannot connect to server.';
+          }
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to analyze. Try again.')),
+          SnackBar(
+            content: Text(errorMsg),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../services/upload_service.dart';
+import '../../timeline/application/timeline_provider.dart';
+import '../../timeline/domain/memory_model.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
@@ -29,6 +33,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   int _recordingSeconds = 0;
   bool _hasPermissions = false;
   FlashMode _flashMode = FlashMode.off;
+  double _currentZoom = 1.0;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _baseZoom = 1.0;
+
+  // Preview state — after capture, show the photo/video briefly
+  String? _previewFilePath;
+  bool _previewIsVideo = false;
 
   @override
   void initState() {
@@ -66,13 +78,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
       _controller = CameraController(
         camera,
-        ResolutionPreset.high,
+        ResolutionPreset.max,
         enableAudio: true,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await _controller!.initialize();
       await _controller!.setFlashMode(_flashMode);
+
+      _minZoom = await _controller!.getMinZoomLevel();
+      _maxZoom = await _controller!.getMaxZoomLevel();
+      _currentZoom = _minZoom;
 
       if (mounted) {
         setState(() => _isInitialized = true);
@@ -90,7 +106,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       _controller?.dispose();
       setState(() => _isInitialized = false);
     } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
+      if (_previewFilePath == null) _initCamera();
     }
   }
 
@@ -106,12 +122,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
   Future<void> _toggleFlash() async {
     HapticFeedback.selectionClick();
-    final modes = [
-      FlashMode.off,
-      FlashMode.auto,
-      FlashMode.always,
-      FlashMode.torch,
-    ];
+    final modes = [FlashMode.off, FlashMode.auto, FlashMode.always];
     final currentIdx = modes.indexOf(_flashMode);
     final nextMode = modes[(currentIdx + 1) % modes.length];
 
@@ -136,47 +147,41 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     }
   }
 
-  String get _flashLabel {
-    switch (_flashMode) {
-      case FlashMode.off:
-        return 'OFF';
-      case FlashMode.auto:
-        return 'AUTO';
-      case FlashMode.always:
-        return 'ON';
-      case FlashMode.torch:
-        return 'TORCH';
-    }
+  Future<void> _handleZoom(ScaleUpdateDetails details) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    final newZoom = (_baseZoom * details.scale).clamp(_minZoom, _maxZoom);
+    await _controller!.setZoomLevel(newZoom);
+    setState(() => _currentZoom = newZoom);
   }
 
+  // ── Capture photo → show preview ──
   Future<void> _takePhoto() async {
     if (_isProcessing ||
         _controller == null ||
         !_controller!.value.isInitialized) {
       return;
     }
-
     setState(() => _isProcessing = true);
     HapticFeedback.mediumImpact();
 
     try {
       final xFile = await _controller!.takePicture();
       if (mounted) {
-        context.push(
-          '/preview',
-          extra: {'filePath': xFile.path, 'isVideo': false},
-        );
+        setState(() {
+          _previewFilePath = xFile.path;
+          _previewIsVideo = false;
+          _isProcessing = false;
+        });
       }
     } catch (e) {
       debugPrint('Take photo error: $e');
-    } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
+  // ── Record video → show preview ──
   Future<void> _startRecording() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-
     HapticFeedback.heavyImpact();
 
     try {
@@ -185,11 +190,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
         _isRecording = true;
         _recordingSeconds = 0;
       });
-
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted) {
-          setState(() => _recordingSeconds++);
-        }
+        if (mounted) setState(() => _recordingSeconds++);
       });
     } catch (e) {
       debugPrint('Start recording error: $e');
@@ -198,38 +200,75 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
   Future<void> _stopRecording() async {
     if (_controller == null || !_isRecording) return;
-
     HapticFeedback.mediumImpact();
     _recordingTimer?.cancel();
 
     try {
       final xFile = await _controller!.stopVideoRecording();
-      setState(() => _isRecording = false);
-
-      if (mounted) {
-        context.push(
-          '/preview',
-          extra: {'filePath': xFile.path, 'isVideo': true},
-        );
-      }
+      setState(() {
+        _isRecording = false;
+        _previewFilePath = xFile.path;
+        _previewIsVideo = true;
+      });
     } catch (e) {
       debugPrint('Stop recording error: $e');
       setState(() => _isRecording = false);
     }
   }
 
+  // ── Gallery pick → show preview ──
   Future<void> _pickFromGallery() async {
     final picker = ImagePicker();
     final xFile = _isVideoMode
         ? await picker.pickVideo(source: ImageSource.gallery)
-        : await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+        : await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
 
     if (xFile != null && mounted) {
-      context.push(
-        '/preview',
-        extra: {'filePath': xFile.path, 'isVideo': _isVideoMode},
-      );
+      setState(() {
+        _previewFilePath = xFile.path;
+        _previewIsVideo = _isVideoMode;
+      });
     }
+  }
+
+  // ── Save: fire background upload, go back to camera instantly ──
+  void _saveAndContinue() {
+    if (_previewFilePath == null) return;
+    HapticFeedback.heavyImpact();
+
+    final filePath = _previewFilePath!;
+    final isVideo = _previewIsVideo;
+    final container = ProviderScope.containerOf(context);
+
+    // Queue background upload
+    ref
+        .read(uploadServiceProvider)
+        .uploadInBackground(
+          container: container,
+          file: File(filePath),
+          type: isVideo ? 'video' : 'photo',
+          onSuccess: (result) {
+            final memory = Memory.fromJson(
+              result['memory'] as Map<String, dynamic>,
+            );
+            container.read(timelineProvider.notifier).addMemory(memory);
+          },
+        );
+
+    // Instantly dismiss preview → back to camera
+    setState(() {
+      _previewFilePath = null;
+      _previewIsVideo = false;
+    });
+  }
+
+  // ── Discard preview ──
+  void _discardPreview() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _previewFilePath = null;
+      _previewIsVideo = false;
+    });
   }
 
   String get _formattedTime {
@@ -248,6 +287,111 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Show preview if we have a captured file
+    if (_previewFilePath != null) {
+      return _buildPreview();
+    }
+    return _buildCamera();
+  }
+
+  // ═══════════════════════════════════════════
+  //  PREVIEW: captured photo/video + save icon
+  // ═══════════════════════════════════════════
+  Widget _buildPreview() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Full-screen preview
+          if (_previewIsVideo)
+            Center(
+              child: Icon(
+                Icons.videocam_rounded,
+                color: Colors.white24,
+                size: 64,
+              ),
+            )
+          else
+            Image.file(
+              File(_previewFilePath!),
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+
+          // Top: close / discard
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: GestureDetector(
+                  onTap: _discardPreview,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Bottom: save icon button
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 32),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: _saveAndContinue,
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: Colors.black,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  //  CAMERA: live viewfinder + controls
+  // ═══════════════════════════════════════
+  Widget _buildCamera() {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -255,7 +399,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
         children: [
           // Camera Preview
           if (_isInitialized && _controller != null)
-            ClipRRect(child: CameraPreview(_controller!))
+            GestureDetector(
+              onScaleStart: (_) => _baseZoom = _currentZoom,
+              onScaleUpdate: _handleZoom,
+              child: _buildFullscreenCamera(),
+            )
           else if (!_hasPermissions)
             _buildPermissionDenied()
           else
@@ -311,15 +459,39 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                       ),
                     ),
                   const Spacer(),
-                  _GlassButton(
-                    icon: _flashIcon,
-                    onTap: _toggleFlash,
-                    label: _flashLabel,
-                  ),
+                  _GlassButton(icon: _flashIcon, onTap: _toggleFlash),
                 ],
               ),
             ),
           ),
+
+          // Zoom indicator
+          if (_isInitialized && _currentZoom > _minZoom)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_currentZoom.toStringAsFixed(1)}x',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // Bottom Controls
           Positioned(
@@ -337,7 +509,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const SizedBox(height: 16),
-                        // Pill mode selector
+                        // Mode selector
                         if (!_isRecording)
                           Container(
                             padding: const EdgeInsets.all(3),
@@ -382,6 +554,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                               _CaptureButton(
                                 isVideoMode: _isVideoMode,
                                 isRecording: _isRecording,
+                                isProcessing: _isProcessing,
                                 onTap: () {
                                   if (_isVideoMode) {
                                     _isRecording
@@ -408,6 +581,33 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFullscreenCamera() {
+    final size = MediaQuery.of(context).size;
+    final cameraAspect = _controller!.value.aspectRatio;
+    final screenAspect = size.width / size.height;
+    final scale = cameraAspect > screenAspect
+        ? size.height / (size.width / cameraAspect)
+        : size.width / (size.height * cameraAspect);
+
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: size.width * scale,
+          height: size.height * scale,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: size.width,
+              height: size.width * cameraAspect,
+              child: CameraPreview(_controller!),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -473,51 +673,29 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   }
 }
 
+// ═══════════════════════════════
+//  Reusable widgets
+// ═══════════════════════════════
+
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final double size;
-  final String? label;
 
-  const _GlassButton({
-    required this.icon,
-    required this.onTap,
-    this.size = 40,
-    this.label,
-  });
+  const _GlassButton({required this.icon, required this.onTap, this.size = 40});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        constraints: BoxConstraints(minWidth: size, minHeight: size),
-        padding: label != null
-            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
-            : EdgeInsets.zero,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
-          shape: label != null ? BoxShape.rectangle : BoxShape.circle,
-          borderRadius: label != null ? BorderRadius.circular(20) : null,
+          shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: 0.12),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: size * 0.48),
-            if (label != null) ...[
-              const SizedBox(width: 4),
-              Text(
-                label!,
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
+        child: Icon(icon, color: Colors.white, size: size * 0.48),
       ),
     );
   }
@@ -562,35 +740,41 @@ class _ModeChip extends StatelessWidget {
 class _CaptureButton extends StatelessWidget {
   final bool isVideoMode;
   final bool isRecording;
+  final bool isProcessing;
   final VoidCallback onTap;
 
   const _CaptureButton({
     required this.isVideoMode,
     required this.isRecording,
+    required this.isProcessing,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 76,
-        height: 76,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isRecording ? Colors.red : Colors.white,
-            width: 3,
-          ),
-        ),
-        padding: const EdgeInsets.all(5),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+      onTap: isProcessing ? null : onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: isProcessing ? 0.5 : 1.0,
+        child: Container(
+          width: 76,
+          height: 76,
           decoration: BoxDecoration(
-            color: isVideoMode ? Colors.red : Colors.white,
-            shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
-            borderRadius: isRecording ? BorderRadius.circular(8) : null,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isRecording ? Colors.red : Colors.white,
+              width: 3,
+            ),
+          ),
+          padding: const EdgeInsets.all(5),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: isVideoMode ? Colors.red : Colors.white,
+              shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+              borderRadius: isRecording ? BorderRadius.circular(8) : null,
+            ),
           ),
         ),
       ),
