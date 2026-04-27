@@ -15,6 +15,13 @@ class TimelineState {
   final bool hasMore;
   final int currentPage;
   final String? error;
+  // Selection mode
+  final Set<String> selectedIds;
+  final bool isSelectionMode;
+  // Search
+  final String? searchQuery;
+  final List<Memory>? searchResults;
+  final bool isSearching;
 
   const TimelineState({
     this.memories = const [],
@@ -23,6 +30,11 @@ class TimelineState {
     this.hasMore = true,
     this.currentPage = 1,
     this.error,
+    this.selectedIds = const {},
+    this.isSelectionMode = false,
+    this.searchQuery,
+    this.searchResults,
+    this.isSearching = false,
   });
 
   TimelineState copyWith({
@@ -32,6 +44,12 @@ class TimelineState {
     bool? hasMore,
     int? currentPage,
     String? error,
+    Set<String>? selectedIds,
+    bool? isSelectionMode,
+    String? searchQuery,
+    List<Memory>? searchResults,
+    bool? isSearching,
+    bool clearSearch = false,
   }) {
     return TimelineState(
       memories: memories ?? this.memories,
@@ -40,6 +58,11 @@ class TimelineState {
       hasMore: hasMore ?? this.hasMore,
       currentPage: currentPage ?? this.currentPage,
       error: error,
+      selectedIds: selectedIds ?? this.selectedIds,
+      isSelectionMode: isSelectionMode ?? this.isSelectionMode,
+      searchQuery: clearSearch ? null : (searchQuery ?? this.searchQuery),
+      searchResults: clearSearch ? null : (searchResults ?? this.searchResults),
+      isSearching: isSearching ?? this.isSearching,
     );
   }
 }
@@ -124,5 +147,88 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
     } catch (_) {
       return null;
     }
+  }
+
+  // Favorites
+  Future<void> toggleFavorite(String id) async {
+    try {
+      final result = await _api.toggleFavorite(id);
+      final isFav = result['isFavorite'] as bool;
+      state = state.copyWith(
+        memories: state.memories
+            .map((m) => m.id == id ? m.copyWith(isFavorite: isFav) : m)
+            .toList(),
+      );
+    } catch (_) {}
+  }
+
+  // Selection mode
+  void toggleSelectionMode() {
+    if (state.isSelectionMode) {
+      state = state.copyWith(isSelectionMode: false, selectedIds: {});
+    } else {
+      state = state.copyWith(isSelectionMode: true);
+    }
+  }
+
+  void toggleSelection(String id) {
+    final updated = Set<String>.from(state.selectedIds);
+    if (updated.contains(id)) {
+      updated.remove(id);
+    } else {
+      updated.add(id);
+    }
+    state = state.copyWith(
+      selectedIds: updated,
+      isSelectionMode: updated.isNotEmpty,
+    );
+  }
+
+  void selectAll() {
+    state = state.copyWith(
+      selectedIds: state.memories.map((m) => m.id).toSet(),
+      isSelectionMode: true,
+    );
+  }
+
+  void clearSelection() {
+    state = state.copyWith(selectedIds: {}, isSelectionMode: false);
+  }
+
+  Future<void> batchDelete() async {
+    if (state.selectedIds.isEmpty) return;
+    try {
+      final ids = state.selectedIds.toList();
+      await _api.batchDeleteMemories(ids);
+      state = state.copyWith(
+        memories: state.memories
+            .where((m) => !state.selectedIds.contains(m.id))
+            .toList(),
+        selectedIds: {},
+        isSelectionMode: false,
+      );
+    } catch (_) {}
+  }
+
+  // Search
+  Future<void> searchMemories(String query) async {
+    if (query.trim().isEmpty) {
+      state = state.copyWith(clearSearch: true);
+      return;
+    }
+    state = state.copyWith(searchQuery: query, isSearching: true);
+    try {
+      final data = await _api.searchMemories(query);
+      final results = data
+          .map((e) => Memory.fromJson(e as Map<String, dynamic>))
+          .toList();
+      state = state.copyWith(searchResults: results, isSearching: false);
+    } catch (_) {
+      state = state.copyWith(isSearching: false);
+    }
+  }
+
+  void clearSearch() {
+    state = state.copyWith(clearSearch: true);
   }
 }

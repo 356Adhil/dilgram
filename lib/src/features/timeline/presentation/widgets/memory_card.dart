@@ -5,13 +5,19 @@ import '../../domain/memory_model.dart';
 class MemoryCard extends StatelessWidget {
   final Memory memory;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final int index;
+  final bool isSelected;
+  final bool isSelectionMode;
 
   const MemoryCard({
     super.key,
     required this.memory,
     required this.onTap,
+    this.onLongPress,
     this.index = 0,
+    this.isSelected = false,
+    this.isSelectionMode = false,
   });
 
   @override
@@ -23,6 +29,7 @@ class MemoryCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Hero(
         tag: 'memory_${memory.id}',
         child: Container(
@@ -111,6 +118,61 @@ class MemoryCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+
+                // Favorite heart indicator
+                if (memory.isFavorite && !isSelectionMode)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.redAccent,
+                        size: 12,
+                      ),
+                    ),
+                  ),
+
+                // Selection checkbox overlay
+                if (isSelectionMode)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : Colors.black.withValues(alpha: 0.35),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 14,
+                            )
+                          : null,
+                    ),
+                  ),
+
+                // Dim overlay when in selection mode but not selected
+                if (isSelectionMode && !isSelected)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.25),
                     ),
                   ),
               ],

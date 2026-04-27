@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,9 @@ import 'package:photo_view/photo_view.dart';
 import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import '../../timeline/application/timeline_provider.dart';
 import '../../timeline/domain/memory_model.dart';
 import '../../../services/api_service.dart';
@@ -121,6 +125,28 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
             const SnackBar(content: Text('Failed to delete memory')),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _shareMemory(Memory memory) async {
+    try {
+      final item = memory.mediaItems[_currentIndex];
+      final response = await http.get(Uri.parse(item.url));
+      final tempDir = await getTemporaryDirectory();
+      final ext = item.isVideo ? 'mp4' : 'jpg';
+      final file = File('${tempDir.path}/share_memory.$ext');
+      await file.writeAsBytes(response.bodyBytes);
+
+      final text = memory.title ?? 'Check out this memory!';
+      await SharePlus.instance.share(
+        ShareParams(text: text, files: [XFile(file.path)]),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to share')));
       }
     }
   }
@@ -428,7 +454,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
                             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                             child: Container(
                               margin: const EdgeInsets.symmetric(
-                                horizontal: 48,
+                                horizontal: 24,
                               ),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -442,6 +468,36 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceEvenly,
                                 children: [
+                                  _ActionButton(
+                                    icon: memory.isFavorite
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    label: 'Favorite',
+                                    onTap: () {
+                                      ref
+                                          .read(timelineProvider.notifier)
+                                          .toggleFavorite(widget.memoryId);
+                                      HapticFeedback.lightImpact();
+                                    },
+                                    color: memory.isFavorite
+                                        ? Colors.redAccent
+                                        : null,
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 24,
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                  ),
+                                  _ActionButton(
+                                    icon: Icons.share_outlined,
+                                    label: 'Share',
+                                    onTap: () => _shareMemory(memory),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 24,
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                  ),
                                   _ActionButton(
                                     icon: Icons.edit_outlined,
                                     label: 'Edit',
@@ -531,17 +587,19 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool isDestructive;
+  final Color? color;
 
   const _ActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
     this.isDestructive = false,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isDestructive ? const Color(0xFFFF6B6B) : Colors.white;
+    final c = color ?? (isDestructive ? const Color(0xFFFF6B6B) : Colors.white);
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -552,12 +610,12 @@ class _ActionButton extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 22),
+            Icon(icon, color: c, size: 22),
             const SizedBox(height: 3),
             Text(
               label,
               style: GoogleFonts.inter(
-                color: color,
+                color: c,
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),

@@ -4,6 +4,7 @@ const auth = require("../middleware/auth");
 const upload = require("../middleware/upload");
 const Memory = require("../models/Memory");
 const CloudinaryService = require("../services/cloudinaryService");
+const gemini = require("../services/geminiService");
 
 const router = express.Router();
 
@@ -78,6 +79,108 @@ router.get("/stats", async (req, res, next) => {
 });
 
 /**
+ * GET /api/memories/search?q=food
+ * Search memories by title, description, tags
+ */
+router.get("/search", async (req, res, next) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q) {
+      return res.json({ memories: [] });
+    }
+
+    // Try text search first, fallback to regex
+    let memories;
+    try {
+      memories = await Memory.find(
+        { $text: { $search: q } },
+        { score: { $meta: "textScore" } },
+      )
+        .sort({ score: { $meta: "textScore" } })
+        .limit(50)
+        .lean();
+    } catch (e) {
+      // Fallback: regex search on tags, title, description
+      const regex = new RegExp(q, "i");
+      memories = await Memory.find({
+        $or: [{ title: regex }, { description: regex }, { tags: regex }],
+      })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean();
+    }
+
+    res.json({ memories });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/memories/favorites
+ * List favorite memories
+ */
+router.get("/favorites", async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    const memories = await Memory.find({ isFavorite: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    res.json({ memories });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/memories/batch-delete
+ * Delete multiple memories at once
+ */
+router.post("/batch-delete", async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "ids array is required" });
+    }
+
+    if (ids.length > 50) {
+      return res.status(400).json({ error: "Max 50 memories per batch" });
+    }
+
+    const memories = await Memory.find({ _id: { $in: ids } });
+
+    // Collect all Cloudinary items to delete
+    const cloudinaryItems = [];
+    for (const memory of memories) {
+      for (const item of memory.mediaItems) {
+        cloudinaryItems.push({
+          publicId: item.cloudinaryPublicId,
+          type: item.type,
+        });
+      }
+    }
+
+    // Delete from Cloudinary
+    if (cloudinaryItems.length > 0) {
+      await CloudinaryService.deleteMany(cloudinaryItems);
+    }
+
+    // Delete from DB
+    await Memory.deleteMany({ _id: { $in: ids } });
+
+    res.json({ deleted: ids.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/memories/:id
  * Get single memory
  */
@@ -143,6 +246,26 @@ router.post("/", upload.array("media", 10), async (req, res, next) => {
       mediaItems,
     });
 
+    // Auto-tag with Gemini in background (non-blocking)
+    if (gemini.enabled) {
+      const photoItem = mediaItems.find((item) => item.type === "photo");
+      if (photoItem) {
+        gemini
+          .analyzeImage(photoItem.cloudinaryUrl)
+          .then(async (analysis) => {
+            const updates = { tags: analysis.tags || [] };
+            if (analysis.mood) updates.mood = analysis.mood;
+            if (!title && analysis.title) updates.title = analysis.title;
+            if (!description && analysis.description)
+              updates.description = analysis.description;
+            await Memory.findByIdAndUpdate(memory._id, { $set: updates });
+          })
+          .catch((err) => {
+            console.error("Auto-tag failed:", err.message);
+          });
+      }
+    }
+
     res.status(201).json({ memory });
   } catch (err) {
     next(err);
@@ -170,6 +293,9 @@ router.put(
       if (req.body.title !== undefined) updates.title = req.body.title;
       if (req.body.description !== undefined)
         updates.description = req.body.description;
+      if (req.body.tags !== undefined) updates.tags = req.body.tags;
+      if (req.body.mood !== undefined) updates.mood = req.body.mood;
+      if (req.body.location !== undefined) updates.location = req.body.location;
 
       const memory = await Memory.findByIdAndUpdate(
         req.params.id,
@@ -187,6 +313,26 @@ router.put(
     }
   },
 );
+
+/**
+ * PATCH /api/memories/:id/favorite
+ * Toggle favorite status
+ */
+router.patch("/:id/favorite", async (req, res, next) => {
+  try {
+    const memory = await Memory.findById(req.params.id);
+    if (!memory) {
+      return res.status(404).json({ error: "Memory not found" });
+    }
+
+    memory.isFavorite = !memory.isFavorite;
+    await memory.save();
+
+    res.json({ isFavorite: memory.isFavorite });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * DELETE /api/memories/:id

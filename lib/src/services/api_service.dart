@@ -176,6 +176,26 @@ class ApiService {
     return response.data;
   }
 
+  // Favorites
+  Future<Map<String, dynamic>> toggleFavorite(String id) async {
+    final response = await _dio.patch(ApiConstants.memoryFavorite(id));
+    return response.data;
+  }
+
+  // Search
+  Future<List<dynamic>> searchMemories(String query) async {
+    final response = await _dio.get(
+      ApiConstants.memoriesSearch,
+      queryParameters: {'q': query},
+    );
+    return response.data['memories'] as List<dynamic>;
+  }
+
+  // Batch Delete
+  Future<void> batchDeleteMemories(List<String> ids) async {
+    await _dio.post(ApiConstants.memoriesBatchDelete, data: {'ids': ids});
+  }
+
   // AI
   Future<bool> getAiStatus() async {
     try {

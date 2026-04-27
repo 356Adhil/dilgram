@@ -39,6 +39,23 @@ const memorySchema = new mongoose.Schema(
       maxlength: 2000,
     },
     mediaItems: [mediaItemSchema],
+    tags: {
+      type: [String],
+      default: [],
+    },
+    mood: {
+      type: String,
+      trim: true,
+    },
+    isFavorite: {
+      type: Boolean,
+      default: false,
+    },
+    location: {
+      lat: Number,
+      lng: Number,
+      name: String,
+    },
   },
   {
     timestamps: true,
@@ -47,5 +64,9 @@ const memorySchema = new mongoose.Schema(
 
 // Index for chronological listing
 memorySchema.index({ createdAt: -1 });
+// Text index for search
+memorySchema.index({ title: "text", description: "text", tags: "text" });
+// Index for favorites
+memorySchema.index({ isFavorite: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Memory", memorySchema);

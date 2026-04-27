@@ -23,6 +23,9 @@ class TimelineScreen extends ConsumerStatefulWidget {
 
 class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
+  bool _showSearch = false;
+  bool _showFavoritesOnly = false;
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -52,52 +56,10 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
       body: NestedScrollView(
         controller: _scrollController,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            floating: true,
-            snap: true,
-            backgroundColor: theme.scaffoldBackgroundColor.withValues(
-              alpha: 0.85,
-            ),
-            surfaceTintColor: Colors.transparent,
-            flexibleSpace: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            title: Text(
-              'Gallery',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-            ),
-            actions: [
-              IconButton(
-                onPressed: () {
-                  ref.read(themeModeProvider.notifier).toggle();
-                  HapticFeedback.lightImpact();
-                },
-                icon: Icon(
-                  theme.brightness == Brightness.dark
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
-                  size: 22,
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.surfaceContainerHigh
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                onPressed: () => context.push('/settings'),
-                icon: const Icon(Icons.settings_outlined, size: 22),
-                style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.surfaceContainerHigh
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-          ),
+          if (timeline.isSelectionMode)
+            _buildSelectionAppBar(theme, timeline)
+          else
+            _buildNormalAppBar(theme),
         ],
         body: RefreshIndicator(
           onRefresh: () => ref.read(timelineProvider.notifier).refresh(),
@@ -108,17 +70,244 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     );
   }
 
+  SliverAppBar _buildNormalAppBar(ThemeData theme) {
+    return SliverAppBar(
+      floating: true,
+      snap: true,
+      backgroundColor: theme.scaffoldBackgroundColor.withValues(alpha: 0.85),
+      surfaceTintColor: Colors.transparent,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(color: Colors.transparent),
+        ),
+      ),
+      title: _showSearch
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              style: GoogleFonts.inter(fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Search memories...',
+                hintStyle: GoogleFonts.inter(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onSubmitted: (q) {
+                ref.read(timelineProvider.notifier).searchMemories(q);
+              },
+            )
+          : Text(
+              'Gallery',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+            ),
+      actions: [
+        if (_showSearch)
+          IconButton(
+            onPressed: () {
+              setState(() => _showSearch = false);
+              _searchController.clear();
+              ref.read(timelineProvider.notifier).clearSearch();
+            },
+            icon: const Icon(Icons.close, size: 22),
+          )
+        else ...[
+          IconButton(
+            onPressed: () => setState(() => _showSearch = true),
+            icon: const Icon(Icons.search_outlined, size: 22),
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.surfaceContainerHigh
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () {
+              setState(() => _showFavoritesOnly = !_showFavoritesOnly);
+              HapticFeedback.lightImpact();
+            },
+            icon: Icon(
+              _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+              size: 22,
+              color: _showFavoritesOnly
+                  ? Colors.redAccent
+                  : theme.colorScheme.onSurface,
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.surfaceContainerHigh
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () {
+              ref.read(themeModeProvider.notifier).toggle();
+              HapticFeedback.lightImpact();
+            },
+            icon: Icon(
+              theme.brightness == Brightness.dark
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+              size: 22,
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.surfaceContainerHigh
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings_outlined, size: 22),
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.surfaceContainerHigh
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+
+  SliverAppBar _buildSelectionAppBar(ThemeData theme, TimelineState timeline) {
+    return SliverAppBar(
+      floating: true,
+      snap: true,
+      pinned: true,
+      backgroundColor: theme.colorScheme.primaryContainer.withValues(
+        alpha: 0.95,
+      ),
+      surfaceTintColor: Colors.transparent,
+      leading: IconButton(
+        onPressed: () => ref.read(timelineProvider.notifier).clearSelection(),
+        icon: const Icon(Icons.close),
+      ),
+      title: Text(
+        '${timeline.selectedIds.length} selected',
+        style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+      ),
+      actions: [
+        IconButton(
+          onPressed: () => ref.read(timelineProvider.notifier).selectAll(),
+          icon: const Icon(Icons.select_all, size: 22),
+          tooltip: 'Select all',
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          onPressed: timeline.selectedIds.isEmpty
+              ? null
+              : () => _confirmBatchDelete(theme, timeline),
+          icon: const Icon(Icons.delete_outline, size: 22),
+          tooltip: 'Delete selected',
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  void _confirmBatchDelete(ThemeData theme, TimelineState timeline) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete memories?'),
+        content: Text(
+          'Are you sure you want to delete ${timeline.selectedIds.length} memories? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(timelineProvider.notifier).batchDelete();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody(TimelineState timeline, ThemeData theme) {
+    // Show search results if searching
+    if (timeline.searchResults != null) {
+      if (timeline.isSearching) {
+        return _buildLoadingShimmer(theme);
+      }
+      if (timeline.searchResults!.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 64,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No results found',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return _buildTimeline(
+        timeline.copyWith(memories: timeline.searchResults),
+        theme,
+      );
+    }
+
     if (timeline.isLoading && timeline.memories.isEmpty) {
       return _buildLoadingShimmer(theme);
     }
     if (timeline.error != null && timeline.memories.isEmpty) {
       return _buildErrorState(theme, timeline.error!);
     }
-    if (timeline.memories.isEmpty) {
+
+    // Apply favorites filter locally
+    var displayState = timeline;
+    if (_showFavoritesOnly) {
+      final favs = timeline.memories.where((m) => m.isFavorite).toList();
+      displayState = timeline.copyWith(memories: favs);
+      if (favs.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.favorite_border,
+                size: 64,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No favorites yet',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    if (displayState.memories.isEmpty) {
       return const EmptyStateWidget();
     }
-    return _buildTimeline(timeline, theme);
+    return _buildTimeline(displayState, theme);
   }
 
   Widget _buildTimeline(TimelineState timeline, ThemeData theme) {
@@ -201,7 +390,29 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
                 MemoryCard(
                       memory: memories[index],
                       index: index,
-                      onTap: () => _openMemory(memories[index]),
+                      isSelected: ref
+                          .watch(timelineProvider)
+                          .selectedIds
+                          .contains(memories[index].id),
+                      isSelectionMode: ref
+                          .watch(timelineProvider)
+                          .isSelectionMode,
+                      onTap: () {
+                        final tl = ref.read(timelineProvider);
+                        if (tl.isSelectionMode) {
+                          ref
+                              .read(timelineProvider.notifier)
+                              .toggleSelection(memories[index].id);
+                        } else {
+                          _openMemory(memories[index]);
+                        }
+                      },
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        ref
+                            .read(timelineProvider.notifier)
+                            .toggleSelection(memories[index].id);
+                      },
                     )
                     .animate()
                     .fadeIn(

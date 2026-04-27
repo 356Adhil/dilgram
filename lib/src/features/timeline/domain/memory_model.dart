@@ -1,8 +1,34 @@
+class MemoryLocation {
+  final double lat;
+  final double lng;
+  final String? name;
+
+  const MemoryLocation({required this.lat, required this.lng, this.name});
+
+  factory MemoryLocation.fromJson(Map<String, dynamic> json) {
+    return MemoryLocation(
+      lat: (json['lat'] as num).toDouble(),
+      lng: (json['lng'] as num).toDouble(),
+      name: json['name'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'lat': lat,
+    'lng': lng,
+    if (name != null) 'name': name,
+  };
+}
+
 class Memory {
   final String id;
   final String? title;
   final String? description;
   final List<MediaItem> mediaItems;
+  final List<String> tags;
+  final String? mood;
+  final bool isFavorite;
+  final MemoryLocation? location;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -11,6 +37,10 @@ class Memory {
     this.title,
     this.description,
     required this.mediaItems,
+    this.tags = const [],
+    this.mood,
+    this.isFavorite = false,
+    this.location,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -25,6 +55,14 @@ class Memory {
               ?.map((e) => MediaItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      tags:
+          (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+      mood: json['mood'] as String?,
+      isFavorite: json['isFavorite'] as bool? ?? false,
+      location: json['location'] != null && json['location']['lat'] != null
+          ? MemoryLocation.fromJson(json['location'] as Map<String, dynamic>)
+          : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -35,6 +73,10 @@ class Memory {
     if (title != null) 'title': title,
     if (description != null) 'description': description,
     'mediaItems': mediaItems.map((e) => e.toJson()).toList(),
+    'tags': tags,
+    if (mood != null) 'mood': mood,
+    'isFavorite': isFavorite,
+    if (location != null) 'location': location!.toJson(),
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
   };
@@ -44,6 +86,10 @@ class Memory {
     String? title,
     String? description,
     List<MediaItem>? mediaItems,
+    List<String>? tags,
+    String? mood,
+    bool? isFavorite,
+    MemoryLocation? location,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -52,6 +98,10 @@ class Memory {
       title: title ?? this.title,
       description: description ?? this.description,
       mediaItems: mediaItems ?? this.mediaItems,
+      tags: tags ?? this.tags,
+      mood: mood ?? this.mood,
+      isFavorite: isFavorite ?? this.isFavorite,
+      location: location ?? this.location,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

@@ -15,6 +15,10 @@ class ApiConstants {
   static String deleteMedia(String memoryId, String mediaId) =>
       '/memories/$memoryId/media/$mediaId';
   static const String memoriesStats = '/memories/stats';
+  static const String memoriesSearch = '/memories/search';
+  static const String memoriesFavorites = '/memories/favorites';
+  static const String memoriesBatchDelete = '/memories/batch-delete';
+  static String memoryFavorite(String id) => '/memories/$id/favorite';
 
   // AI
   static const String aiStatus = '/ai/status';
