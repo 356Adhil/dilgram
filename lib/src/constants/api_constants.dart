@@ -1,22 +1,8 @@
-import 'dart:io' show Platform;
-
 class ApiConstants {
   ApiConstants._();
 
-  // Base URL - auto-detect for Android emulator vs iOS simulator vs real device
-  static String get baseUrl {
-    const envUrl = String.fromEnvironment('API_BASE_URL');
-    if (envUrl.isNotEmpty) return envUrl;
-
-    // Android emulator uses 10.0.2.2 to reach host machine's localhost
-    // iOS simulator can use localhost directly
-    try {
-      if (Platform.isAndroid) {
-        return 'http://10.0.2.2:3000/api';
-      }
-    } catch (_) {}
-    return 'http://localhost:3000/api';
-  }
+  // Base URL
+  static const String baseUrl = 'https://dilgram.onrender.com/api';
 
   // Auth
   static const String setupPin = '/auth/setup-pin';
