@@ -314,6 +314,9 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     final grouped = _groupByDate(timeline.memories);
     final entries = grouped.entries.toList();
 
+    // Track month changes for big section headers
+    String? lastMonthKey;
+
     return ListView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 120),
       itemCount: entries.length + (timeline.isLoadingMore ? 1 : 0),
@@ -335,12 +338,44 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
         }
 
         final entry = entries[index];
+
+        // Determine month key from first memory in group
+        final firstMemory = entry.value.first;
+        final monthKey =
+            '${firstMemory.createdAt.year}-${firstMemory.createdAt.month}';
+        final showMonthHeader = monthKey != lastMonthKey;
+        lastMonthKey = monthKey;
+
+        String monthLabel;
+        final now = DateTime.now();
+        if (firstMemory.createdAt.year == now.year &&
+            firstMemory.createdAt.month == now.month) {
+          monthLabel = 'This Month';
+        } else if (firstMemory.createdAt.year == now.year) {
+          monthLabel = DateFormat('MMMM').format(firstMemory.createdAt);
+        } else {
+          monthLabel = DateFormat('MMMM yyyy').format(firstMemory.createdAt);
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Month section header
+            if (showMonthHeader)
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, index == 0 ? 8 : 28, 16, 4),
+                child: Text(
+                  monthLabel,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
             // Date header
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
               child: Text(
                 entry.key,
                 style: GoogleFonts.inter(

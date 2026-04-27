@@ -53,5 +53,9 @@
 	<string>Dilgram needs photo library access to save and upload your memories</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Dilgram uses Face ID to keep your memories private and secure</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Dilgram uses your location to tag where your memories were captured</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Dilgram uses your location to tag where your memories were captured</string>
 </dict>
 </plist>

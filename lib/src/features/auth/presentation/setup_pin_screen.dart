@@ -89,7 +89,9 @@ class _SetupPinScreenState extends ConsumerState<SetupPinScreen> {
             title: Row(
               children: [
                 Icon(
-                  Icons.fingerprint,
+                  ref.read(authProvider).hasFaceId
+                      ? Icons.face_outlined
+                      : Icons.fingerprint,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 12),

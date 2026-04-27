@@ -8,6 +8,8 @@ import '../features/camera/presentation/camera_screen.dart';
 import '../features/camera/presentation/preview_screen.dart';
 import '../features/media_viewer/presentation/media_viewer_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/ai/presentation/recap_screen.dart';
+import '../features/ai/presentation/person_memories_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -120,6 +122,46 @@ final routerProvider = Provider<GoRouter>((ref) {
             );
           },
         ),
+      ),
+      GoRoute(
+        path: '/recap',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: RecapScreen(period: extra['period'] as String? ?? 'weekly'),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          );
+        },
+      ),
+      GoRoute(
+        path: '/person',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: PersonMemoriesScreen(label: extra['label'] as String? ?? ''),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(1, 0),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ),
+                        ),
+                    child: child,
+                  );
+                },
+          );
+        },
       ),
     ],
   );

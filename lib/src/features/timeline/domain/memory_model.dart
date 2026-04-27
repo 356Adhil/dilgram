@@ -20,6 +20,25 @@ class MemoryLocation {
   };
 }
 
+class MemoryPerson {
+  final String label;
+  final String? description;
+
+  const MemoryPerson({required this.label, this.description});
+
+  factory MemoryPerson.fromJson(Map<String, dynamic> json) {
+    return MemoryPerson(
+      label: json['label'] as String? ?? 'Unknown',
+      description: json['description'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'label': label,
+    if (description != null) 'description': description,
+  };
+}
+
 class Memory {
   final String id;
   final String? title;
@@ -29,6 +48,7 @@ class Memory {
   final String? mood;
   final bool isFavorite;
   final MemoryLocation? location;
+  final List<MemoryPerson> people;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -41,6 +61,7 @@ class Memory {
     this.mood,
     this.isFavorite = false,
     this.location,
+    this.people = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -63,6 +84,11 @@ class Memory {
       location: json['location'] != null && json['location']['lat'] != null
           ? MemoryLocation.fromJson(json['location'] as Map<String, dynamic>)
           : null,
+      people:
+          (json['people'] as List<dynamic>?)
+              ?.map((e) => MemoryPerson.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -77,6 +103,7 @@ class Memory {
     if (mood != null) 'mood': mood,
     'isFavorite': isFavorite,
     if (location != null) 'location': location!.toJson(),
+    'people': people.map((e) => e.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
   };
@@ -90,6 +117,7 @@ class Memory {
     String? mood,
     bool? isFavorite,
     MemoryLocation? location,
+    List<MemoryPerson>? people,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -102,6 +130,7 @@ class Memory {
       mood: mood ?? this.mood,
       isFavorite: isFavorite ?? this.isFavorite,
       location: location ?? this.location,
+      people: people ?? this.people,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

@@ -81,6 +81,9 @@ class ApiService {
     String? description,
     required List<File> files,
     required List<String> types,
+    double? latitude,
+    double? longitude,
+    String? locationName,
     void Function(int, int)? onProgress,
   }) async {
     final formData = FormData();
@@ -88,6 +91,15 @@ class ApiService {
     if (title != null) formData.fields.add(MapEntry('title', title));
     if (description != null) {
       formData.fields.add(MapEntry('description', description));
+    }
+    if (latitude != null) {
+      formData.fields.add(MapEntry('latitude', latitude.toString()));
+    }
+    if (longitude != null) {
+      formData.fields.add(MapEntry('longitude', longitude.toString()));
+    }
+    if (locationName != null) {
+      formData.fields.add(MapEntry('locationName', locationName));
     }
 
     for (var i = 0; i < files.length; i++) {
@@ -227,5 +239,34 @@ class ApiService {
       data: {'message': message},
     );
     return response.data['reply'] as String;
+  }
+
+  // Discover
+  Future<Map<String, dynamic>> getDiscover() async {
+    final response = await _dio.get(ApiConstants.aiDiscover);
+    return response.data;
+  }
+
+  // Weekly Recap
+  Future<Map<String, dynamic>> getWeeklyRecap() async {
+    final response = await _dio.get(ApiConstants.aiWeeklyRecap);
+    return response.data;
+  }
+
+  // Monthly Recap
+  Future<Map<String, dynamic>> getMonthlyRecap() async {
+    final response = await _dio.get(ApiConstants.aiMonthlyRecap);
+    return response.data;
+  }
+
+  // Grouped Memories
+  Future<Map<String, dynamic>> getGroupedMemories({
+    String by = 'location',
+  }) async {
+    final response = await _dio.get(
+      ApiConstants.memoriesGrouped,
+      queryParameters: {'by': by},
+    );
+    return response.data;
   }
 }

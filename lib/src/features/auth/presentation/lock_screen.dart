@@ -19,6 +19,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
   late Animation<double> _shakeAnimation;
   String _enteredPin = '';
   bool _isVerifying = false;
+  bool _biometricTriggered = false;
 
   @override
   void initState() {
@@ -31,27 +32,19 @@ class _LockScreenState extends ConsumerState<LockScreen>
       begin: 0,
       end: 24,
     ).chain(CurveTween(curve: Curves.elasticIn)).animate(_shakeController);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAuthState();
-    });
-  }
-
-  void _checkAuthState() {
-    final authState = ref.read(authProvider);
-    if (authState.status == AuthStatus.authenticated) {
-      context.go('/home');
-    } else if (authState.biometricEnabled) {
-      _tryBiometric();
-    }
   }
 
   Future<void> _tryBiometric() async {
-    final success = await ref
-        .read(authProvider.notifier)
-        .authenticateWithBiometric();
-    if (success && mounted) {
-      context.go('/home');
+    try {
+      final success = await ref
+          .read(authProvider.notifier)
+          .authenticateWithBiometric();
+      if (success && mounted) {
+        HapticFeedback.lightImpact();
+        context.go('/home');
+      }
+    } catch (e) {
+      // Biometric failed — user can still enter PIN
     }
   }
 
@@ -107,6 +100,24 @@ class _LockScreenState extends ConsumerState<LockScreen>
     final authState = ref.watch(authProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // Navigate if already authenticated
+    if (authState.status == AuthStatus.authenticated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/home');
+      });
+    }
+
+    // Auto-trigger biometric once when auth state is ready
+    if (!_biometricTriggered &&
+        authState.status == AuthStatus.locked &&
+        authState.biometricEnabled &&
+        authState.biometricAvailable) {
+      _biometricTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _tryBiometric();
+      });
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -203,7 +214,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
                       color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     ),
                     child: Icon(
-                      Icons.fingerprint,
+                      authState.hasFaceId
+                          ? Icons.face_outlined
+                          : Icons.fingerprint,
                       size: 32,
                       color: theme.colorScheme.primary,
                     ),

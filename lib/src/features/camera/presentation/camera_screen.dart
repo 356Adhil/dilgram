@@ -5,6 +5,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -42,11 +44,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   String? _previewFilePath;
   bool _previewIsVideo = false;
 
+  // Location state
+  double? _latitude;
+  double? _longitude;
+  String? _locationName;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _requestPermissionsAndInit();
+    _fetchLocation();
   }
 
   Future<void> _requestPermissionsAndInit() async {
@@ -58,6 +66,52 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       await _initCamera();
     } else {
       setState(() => _hasPermissions = false);
+    }
+  }
+
+  Future<void> _fetchLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      LocationPermission perm = permission;
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+
+      // Reverse geocode to get place name
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = <String>[
+            if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
+            if (p.administrativeArea != null &&
+                p.administrativeArea!.isNotEmpty)
+              p.administrativeArea!,
+            if (p.country != null && p.country!.isNotEmpty) p.country!,
+          ];
+          _locationName = parts.join(', ');
+        }
+      } catch (e) {
+        debugPrint('Reverse geocode error: $e');
+      }
+    } catch (e) {
+      debugPrint('Location fetch error: $e');
     }
   }
 
@@ -78,7 +132,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
       _controller = CameraController(
         camera,
-        ResolutionPreset.max,
+        ResolutionPreset.max, // highest available resolution
         enableAudio: true,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
@@ -239,6 +293,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     final filePath = _previewFilePath!;
     final isVideo = _previewIsVideo;
     final container = ProviderScope.containerOf(context);
+    final lat = _latitude;
+    final lng = _longitude;
+    final locName = _locationName;
 
     // Queue background upload
     ref
@@ -247,6 +304,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
           container: container,
           file: File(filePath),
           type: isVideo ? 'video' : 'photo',
+          latitude: lat,
+          longitude: lng,
+          locationName: locName,
           onSuccess: (result) {
             final memory = Memory.fromJson(
               result['memory'] as Map<String, dynamic>,
@@ -298,12 +358,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
   //  PREVIEW: captured photo/video + save icon
   // ═══════════════════════════════════════════
   Widget _buildPreview() {
+    final transformController = TransformationController();
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Full-screen preview
+          // Full-screen preview with pinch-to-zoom
           if (_previewIsVideo)
             Center(
               child: Icon(
@@ -313,19 +375,43 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
               ),
             )
           else
-            Image.file(
-              File(_previewFilePath!),
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
+            GestureDetector(
+              onDoubleTap: () {
+                final size = MediaQuery.of(context).size;
+                if (transformController.value != Matrix4.identity()) {
+                  transformController.value = Matrix4.identity();
+                } else {
+                  final matrix = Matrix4.identity();
+                  // Zoom 2x centered on screen
+                  matrix.storage[0] = 2.0; // scaleX
+                  matrix.storage[5] = 2.0; // scaleY
+                  matrix.storage[12] = -size.width / 2; // translateX
+                  matrix.storage[13] = -size.height / 2; // translateY
+                  transformController.value = matrix;
+                }
+              },
+              child: InteractiveViewer(
+                transformationController: transformController,
+                minScale: 1.0,
+                maxScale: 5.0,
+                panEnabled: true,
+                scaleEnabled: true,
+                child: SizedBox.expand(
+                  child: Image.file(File(_previewFilePath!), fit: BoxFit.cover),
+                ),
+              ),
             ),
 
           // Top: close / discard
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Align(
-                alignment: Alignment.topLeft,
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: GestureDetector(
                   onTap: _discardPreview,
                   child: Container(
@@ -346,36 +432,56 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
             ),
           ),
 
-          // Bottom: save icon button
+          // Bottom: save button
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 32),
-                child: Center(
-                  child: GestureDetector(
-                    onTap: _saveAndContinue,
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.check_rounded,
-                        color: Colors.black,
-                        size: 32,
+            child: IgnorePointer(
+              ignoring: false,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 32),
+                  child: Center(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _saveAndContinue,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(30),
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.save_rounded,
+                              color: Colors.black87,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Save',
+                              style: GoogleFonts.inter(
+                                color: Colors.black87,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

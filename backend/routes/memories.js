@@ -8,6 +8,15 @@ const gemini = require("../services/geminiService");
 
 const router = express.Router();
 
+// Helper: apply Cloudinary face-crop transformation to a URL
+function faceCropUrl(url, size = 200) {
+  if (!url) return null;
+  return url.replace(
+    "/upload/",
+    `/upload/c_thumb,g_face,w_${size},h_${size},z_0.7/`,
+  );
+}
+
 // All routes require authentication
 router.use(auth);
 
@@ -79,6 +88,93 @@ router.get("/stats", async (req, res, next) => {
 });
 
 /**
+ * GET /api/memories/grouped?by=location
+ * Get memories grouped by location or month
+ */
+router.get("/grouped", async (req, res, next) => {
+  try {
+    const by = req.query.by || "location";
+    const memories = await Memory.find().sort({ createdAt: -1 }).lean();
+
+    if (by === "location") {
+      const groups = {};
+      for (const m of memories) {
+        const key = m.location?.name || "Unknown Location";
+        if (!groups[key]) {
+          groups[key] = {
+            name: key,
+            lat: m.location?.lat || null,
+            lng: m.location?.lng || null,
+            memories: [],
+          };
+        }
+        groups[key].memories.push(m);
+      }
+      const sorted = Object.values(groups).sort(
+        (a, b) => b.memories.length - a.memories.length,
+      );
+      return res.json({ groups: sorted });
+    }
+
+    if (by === "month") {
+      const groups = {};
+      for (const m of memories) {
+        const d = new Date(m.createdAt);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const label = d.toLocaleString("en-US", {
+          month: "long",
+          year: "numeric",
+        });
+        if (!groups[key]) {
+          groups[key] = { key, label, memories: [] };
+        }
+        groups[key].memories.push(m);
+      }
+      const sorted = Object.values(groups).sort((a, b) =>
+        b.key.localeCompare(a.key),
+      );
+      return res.json({ groups: sorted });
+    }
+
+    // Default: by people
+    if (by === "people") {
+      const peopleMap = {};
+      for (const m of memories) {
+        if (m.people && m.people.length > 0) {
+          for (const person of m.people) {
+            const key = person.label || person.description || "Unknown";
+            if (!peopleMap[key]) {
+              peopleMap[key] = {
+                label: key,
+                description: person.description || null,
+                count: 0,
+                thumbnail: null,
+                memories: [],
+              };
+            }
+            peopleMap[key].count++;
+            peopleMap[key].memories.push(m);
+            if (!peopleMap[key].thumbnail) {
+              const photo = m.mediaItems.find((i) => i.type === "photo");
+              if (photo)
+                peopleMap[key].thumbnail = faceCropUrl(photo.cloudinaryUrl);
+            }
+          }
+        }
+      }
+      const sorted = Object.values(peopleMap).sort((a, b) => b.count - a.count);
+      return res.json({ people: sorted });
+    }
+
+    res
+      .status(400)
+      .json({ error: "Invalid groupBy. Use: location, month, people" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/memories/search?q=food
  * Search memories by title, description, tags
  */
@@ -100,10 +196,15 @@ router.get("/search", async (req, res, next) => {
         .limit(50)
         .lean();
     } catch (e) {
-      // Fallback: regex search on tags, title, description
+      // Fallback: regex search on tags, title, description, location name
       const regex = new RegExp(q, "i");
       memories = await Memory.find({
-        $or: [{ title: regex }, { description: regex }, { tags: regex }],
+        $or: [
+          { title: regex },
+          { description: regex },
+          { tags: regex },
+          { "location.name": regex },
+        ],
       })
         .sort({ createdAt: -1 })
         .limit(50)
@@ -202,7 +303,7 @@ router.get("/:id", async (req, res, next) => {
  */
 router.post("/", upload.array("media", 10), async (req, res, next) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, latitude, longitude, locationName } = req.body;
     const files = req.files;
     const types = req.body.types; // array of 'photo' or 'video'
 
@@ -240,31 +341,57 @@ router.post("/", upload.array("media", 10), async (req, res, next) => {
       mimeType: result.mimeType,
     }));
 
-    const memory = await Memory.create({
-      title: title || null,
-      description: description || null,
-      mediaItems,
-    });
+    let aiTitle = null;
+    let aiDescription = null;
+    let aiTags = [];
+    let aiMood = null;
+    let aiPeople = [];
 
-    // Auto-tag with Gemini in background (non-blocking)
+    // Auto-caption with Gemini (blocking so the response includes AI data)
     if (gemini.enabled) {
       const photoItem = mediaItems.find((item) => item.type === "photo");
       if (photoItem) {
-        gemini
-          .analyzeImage(photoItem.cloudinaryUrl)
-          .then(async (analysis) => {
-            const updates = { tags: analysis.tags || [] };
-            if (analysis.mood) updates.mood = analysis.mood;
-            if (!title && analysis.title) updates.title = analysis.title;
-            if (!description && analysis.description)
-              updates.description = analysis.description;
-            await Memory.findByIdAndUpdate(memory._id, { $set: updates });
-          })
-          .catch((err) => {
-            console.error("Auto-tag failed:", err.message);
-          });
+        try {
+          const analysis = await gemini.analyzeImage(photoItem.cloudinaryUrl);
+          aiTags = analysis.tags || [];
+          aiMood = analysis.mood || null;
+          aiPeople = analysis.people || [];
+          if (!title && analysis.title) aiTitle = analysis.title;
+          if (!description && analysis.description)
+            aiDescription = analysis.description;
+        } catch (err) {
+          console.error("Auto-caption failed:", err.message);
+        }
       }
     }
+
+    // Build location object if coordinates provided
+    let location = null;
+    if (latitude && longitude) {
+      location = {
+        lat: parseFloat(latitude),
+        lng: parseFloat(longitude),
+        name: locationName || null,
+      };
+      // Add location name to tags for searchability
+      if (locationName) {
+        const locParts = locationName
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        aiTags = [...new Set([...aiTags, ...locParts])];
+      }
+    }
+
+    const memory = await Memory.create({
+      title: title || aiTitle || null,
+      description: description || aiDescription || null,
+      tags: aiTags,
+      mood: aiMood,
+      location,
+      people: aiPeople,
+      mediaItems,
+    });
 
     res.status(201).json({ memory });
   } catch (err) {

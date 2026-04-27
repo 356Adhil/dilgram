@@ -32,24 +32,43 @@ class MediaViewerScreen extends ConsumerStatefulWidget {
   ConsumerState<MediaViewerScreen> createState() => _MediaViewerScreenState();
 }
 
-class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
-  late PageController _pageController;
-  int _currentIndex = 0;
+class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
+    with SingleTickerProviderStateMixin {
+  late PageController _mediaPageController;
+  late PageController _memoryPageController;
+  late ScrollController _scrollController;
+  int _currentMediaIndex = 0;
+  int _currentMemoryIndex = 0;
   bool _showOverlay = true;
+  bool _showDetails = false;
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
-  double _dragOffset = 0;
+
+  List<Memory> _allMemories = [];
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
+    _currentMediaIndex = widget.initialIndex;
+
+    // Get all memories from timeline and find the starting index
+    final timelineState = ref.read(timelineProvider);
+    _allMemories = timelineState.memories;
+    _currentMemoryIndex = _allMemories.indexWhere(
+      (m) => m.id == widget.memoryId,
+    );
+    if (_currentMemoryIndex < 0) _currentMemoryIndex = 0;
+
+    _memoryPageController = PageController(initialPage: _currentMemoryIndex);
+    _mediaPageController = PageController(initialPage: widget.initialIndex);
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final memory = _memory;
+      final memory = _currentMemory;
       if (memory != null && memory.mediaItems.isNotEmpty) {
-        final item = memory.mediaItems[_currentIndex];
+        final idx = _currentMediaIndex.clamp(0, memory.mediaItems.length - 1);
+        final item = memory.mediaItems[idx];
         if (item.isVideo) {
           _initVideo(item.url);
         }
@@ -57,8 +76,52 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
     });
   }
 
-  Memory? get _memory =>
-      ref.read(timelineProvider.notifier).getMemoryById(widget.memoryId);
+  Memory? get _currentMemory {
+    if (_allMemories.isEmpty) return null;
+    if (_currentMemoryIndex < 0 || _currentMemoryIndex >= _allMemories.length)
+      return null;
+    // Re-fetch from provider to get latest state (e.g. after favorite toggle)
+    return ref
+        .read(timelineProvider.notifier)
+        .getMemoryById(_allMemories[_currentMemoryIndex].id);
+  }
+
+  String get _currentMemoryId {
+    if (_allMemories.isEmpty ||
+        _currentMemoryIndex < 0 ||
+        _currentMemoryIndex >= _allMemories.length) {
+      return widget.memoryId;
+    }
+    return _allMemories[_currentMemoryIndex].id;
+  }
+
+  void _onMemoryPageChanged(int index) {
+    _disposeVideo();
+    setState(() {
+      _currentMemoryIndex = index;
+      _currentMediaIndex = 0;
+      _showDetails = false;
+      _showOverlay = true;
+    });
+
+    // Reset scroll position
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
+    // Reset media page controller
+    _mediaPageController.dispose();
+    _mediaPageController = PageController(initialPage: 0);
+
+    // Init video if first item is video
+    final memory = _currentMemory;
+    if (memory != null && memory.mediaItems.isNotEmpty) {
+      final item = memory.mediaItems[0];
+      if (item.isVideo) {
+        _initVideo(item.url);
+      }
+    }
+  }
 
   void _initVideo(String url) {
     _disposeVideo();
@@ -114,8 +177,8 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
 
     if (confirmed == true) {
       try {
-        await ref.read(apiServiceProvider).deleteMemory(widget.memoryId);
-        ref.read(timelineProvider.notifier).removeMemory(widget.memoryId);
+        await ref.read(apiServiceProvider).deleteMemory(_currentMemoryId);
+        ref.read(timelineProvider.notifier).removeMemory(_currentMemoryId);
         if (mounted) {
           HapticFeedback.mediumImpact();
           context.pop();
@@ -132,7 +195,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
 
   Future<void> _shareMemory(Memory memory) async {
     try {
-      final item = memory.mediaItems[_currentIndex];
+      final item = memory.mediaItems[_currentMediaIndex];
       final response = await http.get(Uri.parse(item.url));
       final tempDir = await getTemporaryDirectory();
       final ext = item.isVideo ? 'mp4' : 'jpg';
@@ -153,7 +216,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
   }
 
   void _showEditSheet() {
-    final memory = _memory;
+    final memory = _currentMemory;
     if (memory == null) return;
 
     final titleCtrl = TextEditingController(text: memory.title ?? '');
@@ -211,7 +274,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
                         await ref
                             .read(apiServiceProvider)
                             .updateMemory(
-                              widget.memoryId,
+                              _currentMemoryId,
                               title: titleCtrl.text.isEmpty
                                   ? null
                                   : titleCtrl.text,
@@ -259,14 +322,53 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _mediaPageController.dispose();
+    _memoryPageController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _disposeVideo();
     super.dispose();
   }
 
+  void _onScroll() {
+    final offset = _scrollController.offset;
+    final screenH = MediaQuery.of(context).size.height;
+    final threshold = screenH * 0.15;
+    if (offset > threshold && !_showDetails) {
+      setState(() {
+        _showDetails = true;
+        _showOverlay = false;
+      });
+    } else if (offset <= 10 && _showDetails) {
+      setState(() {
+        _showDetails = false;
+        _showOverlay = true;
+      });
+    }
+  }
+
+  void _scrollToDetails() {
+    final screenH = MediaQuery.of(context).size.height;
+    _scrollController.animateTo(
+      screenH * 0.45,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollBackToImage() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final memory = _memory;
+    // Refresh memory list from provider
+    _allMemories = ref.watch(timelineProvider).memories;
+    final memory = _currentMemory;
     if (memory == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
@@ -279,262 +381,617 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
       );
     }
 
+    final theme = Theme.of(context);
+    final screenH = MediaQuery.of(context).size.height;
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () => setState(() => _showOverlay = !_showOverlay),
-        onVerticalDragUpdate: (details) {
-          setState(() => _dragOffset += details.delta.dy);
-        },
-        onVerticalDragEnd: (details) {
-          if (_dragOffset.abs() > 100) {
-            context.pop();
-          } else {
-            setState(() => _dragOffset = 0);
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          transform: Matrix4.translationValues(0, _dragOffset.clamp(0, 300), 0),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Media pages
-              PageView.builder(
-                controller: _pageController,
-                itemCount: memory.mediaItems.length,
-                onPageChanged: (index) {
-                  setState(() => _currentIndex = index);
-                  final item = memory.mediaItems[index];
-                  if (item.isVideo) {
-                    _initVideo(item.url);
-                  } else {
-                    _disposeVideo();
-                  }
-                },
-                itemBuilder: (context, index) {
-                  final item = memory.mediaItems[index];
-                  if (item.isVideo) {
-                    return _buildVideoView(item);
-                  }
-                  return _buildPhotoView(item);
-                },
+      backgroundColor: _showDetails ? theme.colorScheme.surface : Colors.black,
+      body: PageView.builder(
+        controller: _memoryPageController,
+        itemCount: _allMemories.length,
+        physics: _showDetails
+            ? const NeverScrollableScrollPhysics()
+            : const BouncingScrollPhysics(),
+        onPageChanged: _onMemoryPageChanged,
+        itemBuilder: (context, memoryIdx) {
+          // Only build content for current and adjacent pages
+          final pageMemory = ref
+              .read(timelineProvider.notifier)
+              .getMemoryById(_allMemories[memoryIdx].id);
+          if (pageMemory == null) {
+            return const Center(
+              child: Text(
+                'Memory not found',
+                style: TextStyle(color: Colors.white54),
               ),
-
-              // Top overlay
-              if (_showOverlay)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.5),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                        child: SafeArea(
-                          bottom: false,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => context.pop(),
-                                  icon: const Icon(
-                                    Icons.arrow_back_rounded,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (memory.title != null &&
-                                          memory.title!.isNotEmpty)
-                                        Text(
-                                          memory.title!,
-                                          style: GoogleFonts.plusJakartaSans(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      Text(
-                                        DateFormat(
-                                          'MMM d, y · h:mm a',
-                                        ).format(memory.createdAt),
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white60,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 48),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Bottom overlay — floating action bar + page indicator
-              if (_showOverlay)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    top: false,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Description
-                        if (memory.description != null &&
-                            memory.description!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Text(
-                              memory.description!,
-                              style: GoogleFonts.inter(
-                                color: Colors.white.withValues(alpha: 0.85),
-                                fontSize: 14,
-                                height: 1.4,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        const SizedBox(height: 12),
-                        // Page indicator
-                        if (memory.mediaItems.length > 1)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: List.generate(memory.mediaItems.length, (
-                              index,
-                            ) {
-                              return AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 3,
-                                ),
-                                width: index == _currentIndex ? 20 : 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: index == _currentIndex
-                                      ? Colors.white
-                                      : Colors.white38,
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              );
-                            }),
-                          ),
-                        const SizedBox(height: 16),
-                        // Floating action bar
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  _ActionButton(
-                                    icon: memory.isFavorite
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    label: 'Favorite',
-                                    onTap: () {
-                                      ref
-                                          .read(timelineProvider.notifier)
-                                          .toggleFavorite(widget.memoryId);
-                                      HapticFeedback.lightImpact();
-                                    },
-                                    color: memory.isFavorite
-                                        ? Colors.redAccent
-                                        : null,
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 24,
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                  _ActionButton(
-                                    icon: Icons.share_outlined,
-                                    label: 'Share',
-                                    onTap: () => _shareMemory(memory),
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 24,
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                  _ActionButton(
-                                    icon: Icons.edit_outlined,
-                                    label: 'Edit',
-                                    onTap: _showEditSheet,
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 24,
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                  _ActionButton(
-                                    icon: Icons.delete_outline_rounded,
-                                    label: 'Delete',
-                                    onTap: _deleteMemory,
-                                    isDestructive: true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+            );
+          }
+          // Only the current page gets the full interactive content
+          if (memoryIdx != _currentMemoryIndex) {
+            return _buildStaticPage(pageMemory);
+          }
+          return _buildMemoryPage(memory, theme, screenH);
+        },
       ),
     );
   }
 
+  /// Lightweight page for non-current memories (shown during swipe)
+  Widget _buildStaticPage(Memory memory) {
+    final item = memory.mediaItems.isNotEmpty ? memory.mediaItems[0] : null;
+    if (item == null) {
+      return const Center(
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white38,
+          size: 48,
+        ),
+      );
+    }
+    if (item.isVideo) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: item.thumbnailUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: item.thumbnailUrl!,
+                  fit: BoxFit.contain,
+                )
+              : const Icon(
+                  Icons.videocam_rounded,
+                  color: Colors.white24,
+                  size: 64,
+                ),
+        ),
+      );
+    }
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: CachedNetworkImage(imageUrl: item.url, fit: BoxFit.contain),
+      ),
+    );
+  }
+
+  /// Full interactive page for the currently active memory
+  Widget _buildMemoryPage(Memory memory, ThemeData theme, double screenH) {
+    return Stack(
+      children: [
+        // Main scrollable content
+        CustomScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // Image/video area
+            SliverToBoxAdapter(
+              child: GestureDetector(
+                onTap: () {
+                  if (_showDetails) {
+                    _scrollBackToImage();
+                  } else {
+                    setState(() => _showOverlay = !_showOverlay);
+                  }
+                },
+                child: Container(
+                  height: screenH,
+                  color: Colors.black,
+                  child: PageView.builder(
+                    controller: _mediaPageController,
+                    itemCount: memory.mediaItems.length,
+                    onPageChanged: (index) {
+                      setState(() => _currentMediaIndex = index);
+                      final item = memory.mediaItems[index];
+                      if (item.isVideo) {
+                        _initVideo(item.url);
+                      } else {
+                        _disposeVideo();
+                      }
+                    },
+                    itemBuilder: (context, index) {
+                      final item = memory.mediaItems[index];
+                      if (item.isVideo) {
+                        return _buildVideoView(item);
+                      }
+                      return _buildPhotoView(item);
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // Swipe-up hint
+            SliverToBoxAdapter(
+              child: Container(
+                color: theme.colorScheme.surface,
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.12,
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Details content
+            SliverToBoxAdapter(child: _buildDetailsContent(memory, theme)),
+          ],
+        ),
+
+        // Top overlay (back button + title)
+        if (_showOverlay && !_showDetails)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.5),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => context.pop(),
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (memory.title != null &&
+                                    memory.title!.isNotEmpty)
+                                  Text(
+                                    memory.title!,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                Text(
+                                  DateFormat(
+                                    'MMM d, y · h:mm a',
+                                  ).format(memory.createdAt),
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white60,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 48),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Details mode top bar
+        if (_showDetails)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              color: theme.colorScheme.surface,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: _scrollBackToImage,
+                        icon: Icon(
+                          Icons.arrow_back_rounded,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Details',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 48),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Bottom overlay — floating action bar + page indicator
+        if (_showOverlay && !_showDetails)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Swipe up hint
+                  GestureDetector(
+                    onTap: () => _scrollToDetails(),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            color: Colors.white54,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Swipe up for details',
+                            style: GoogleFonts.inter(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Page indicator
+                  if (memory.mediaItems.length > 1)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(memory.mediaItems.length, (
+                        index,
+                      ) {
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: index == _currentMediaIndex ? 20 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: index == _currentMediaIndex
+                                ? Colors.white
+                                : Colors.white38,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        );
+                      }),
+                    ),
+                  const SizedBox(height: 12),
+                  // Floating action bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _ActionButton(
+                              icon: memory.isFavorite
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              label: 'Favorite',
+                              onTap: () {
+                                ref
+                                    .read(timelineProvider.notifier)
+                                    .toggleFavorite(_currentMemoryId);
+                                HapticFeedback.lightImpact();
+                              },
+                              color: memory.isFavorite
+                                  ? Colors.redAccent
+                                  : null,
+                            ),
+                            _ActionButton(
+                              icon: Icons.share_outlined,
+                              label: 'Share',
+                              onTap: () => _shareMemory(memory),
+                            ),
+                            _ActionButton(
+                              icon: Icons.info_outline_rounded,
+                              label: 'Details',
+                              onTap: () => _scrollToDetails(),
+                            ),
+                            _ActionButton(
+                              icon: Icons.edit_outlined,
+                              label: 'Edit',
+                              onTap: _showEditSheet,
+                            ),
+                            _ActionButton(
+                              icon: Icons.delete_outline_rounded,
+                              label: 'Delete',
+                              onTap: _deleteMemory,
+                              isDestructive: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDetailsContent(Memory memory, ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 48),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title
+          if (memory.title != null && memory.title!.isNotEmpty)
+            Text(
+              memory.title!,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+
+          // Date & time
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 20),
+            child: Text(
+              DateFormat('EEEE, MMMM d, y · h:mm a').format(memory.createdAt),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+              ),
+            ),
+          ),
+
+          // Description
+          if (memory.description != null && memory.description!.isNotEmpty) ...[
+            Text(
+              memory.description!,
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                height: 1.7,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // Location + Mood inline row
+          if (memory.location?.name != null ||
+              (memory.mood != null && memory.mood!.isNotEmpty))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (memory.location?.name != null)
+                    _InfoChip(
+                      icon: Icons.place_outlined,
+                      label: memory.location!.name!,
+                      theme: theme,
+                    ),
+                  if (memory.mood != null && memory.mood!.isNotEmpty)
+                    _InfoChip(
+                      icon: Icons.mood_rounded,
+                      label: memory.mood!,
+                      theme: theme,
+                      isPrimary: true,
+                    ),
+                ],
+              ),
+            ),
+
+          // Tags
+          if (memory.tags.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: memory.tags.map((tag) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHigh.withValues(
+                      alpha: 0.6,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '#$tag',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // People
+          if (memory.people.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'People',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+            ...memory.people.map((person) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: theme.colorScheme.primary.withValues(
+                        alpha: 0.08,
+                      ),
+                      child: Text(
+                        person.label.isNotEmpty
+                            ? person.label[0].toUpperCase()
+                            : '?',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            person.label,
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          if (person.description != null)
+                            Text(
+                              person.description!,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.45,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 24),
+          ],
+
+          // Media info footer
+          if (memory.mediaItems.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow.withValues(
+                  alpha: 0.5,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.photo_camera_outlined,
+                    size: 18,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _buildMediaSummary(memory),
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (memory.mediaItems[_currentMediaIndex].width != null &&
+                      memory.mediaItems[_currentMediaIndex].height != null)
+                    Text(
+                      '${memory.mediaItems[_currentMediaIndex].width} × ${memory.mediaItems[_currentMediaIndex].height}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.35,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _buildMediaSummary(Memory memory) {
+    final photos = memory.mediaItems.where((i) => i.isPhoto).length;
+    final videos = memory.mediaItems.where((i) => i.isVideo).length;
+    final parts = <String>[];
+    if (photos > 0) parts.add('$photos photo${photos != 1 ? 's' : ''}');
+    if (videos > 0) parts.add('$videos video${videos != 1 ? 's' : ''}');
+    return parts.join(', ');
+  }
+
   Widget _buildPhotoView(MediaItem item) {
     return Hero(
-      tag: 'memory_${widget.memoryId}',
+      tag: 'memory_$_currentMemoryId',
       child: PhotoView(
         imageProvider: CachedNetworkImageProvider(item.url),
         minScale: PhotoViewComputedScale.contained,
@@ -596,6 +1053,59 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
   }
 }
 
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final ThemeData theme;
+  final bool isPrimary;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.theme,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.4)
+            : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color: isPrimary
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isPrimary
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -620,11 +1130,11 @@ class _ActionButton extends StatelessWidget {
         onTap();
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: c, size: 22),
+            Icon(icon, color: c, size: 20),
             const SizedBox(height: 3),
             Text(
               label,

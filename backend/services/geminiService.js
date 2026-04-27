@@ -9,7 +9,7 @@ class GeminiService {
     }
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     this.model = this.genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 1024,
@@ -53,13 +53,16 @@ class GeminiService {
           },
         },
         {
-          text: `Analyze this image and respond with ONLY a JSON object (no markdown, no code blocks):
+          text: `You are a personal photo journal assistant. Analyze this image and respond with ONLY a JSON object (no markdown, no code blocks):
 {
-  "title": "A short creative title (max 6 words)",
-  "description": "A poetic 1-2 sentence description of what's in the image, written as a personal memory caption",
-  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "mood": "one word mood/emotion this image evokes"
-}`,
+  "title": "An evocative, personal memory title (3-6 words). NOT a literal description. Think like a diary entry or photo album title. Bad: 'A man with a beard'. Good: 'Golden Hour Reflections', 'Sunday Morning Coffee', 'Lost in Thought'",
+  "description": "A warm, nostalgic 1-2 sentence caption written as if recalling a personal memory. Use sensory details and emotion. Bad: 'A person standing outside'. Good: 'The afternoon light caught everything just right — one of those quiet moments worth holding onto.'",
+  "tags": ["10-15 specific, detailed tags. Include ALL of: specific objects visible (laptop, coffee cup, book, car model), activity/action, setting/place type (cafe, bedroom, rooftop, kitchen), time of day (morning, golden hour, night), lighting (natural light, neon, warm glow), season/weather if visible, colors (teal, golden, muted), textures/materials (wooden, glass, concrete), atmosphere/aesthetic (cozy, urban, vintage, minimal), style if relevant (portrait, candid, flat lay), and any identifiable brands, food items, plants, animals, or architectural elements"],
+  "mood": "one word mood/emotion this image evokes (e.g. serene, joyful, nostalgic, cozy, adventurous, reflective)",
+  "people": [{"label": "descriptive name like 'man in blue shirt' or 'smiling child'", "description": "brief appearance description"}]
+}
+If there are no people in the image, set "people" to an empty array [].
+IMPORTANT: Be creative and personal with titles. Avoid generic descriptions. Tags should be SPECIFIC — prefer 'iced latte' over 'drink', 'MacBook Pro' over 'laptop', 'monstera plant' over 'plant'.`,
         },
       ]);
     } catch (aiErr) {
@@ -89,6 +92,7 @@ class GeminiService {
         description: text.slice(0, 200),
         tags: [],
         mood: "neutral",
+        people: [],
       };
     }
   }
@@ -203,6 +207,77 @@ Respond naturally and helpfully. Keep responses concise (2-4 sentences). If they
     }
 
     return result.response.text().trim();
+  }
+
+  /**
+   * Generate a rich recap (weekly or monthly) from memory metadata
+   * @param {Object} context - { period, memoryCount, locations, moods, titles, dateRange }
+   * @param {Array<string>} imageUrls - Up to 4 representative image URLs
+   * @returns {Object} { story, theme, highlights }
+   */
+  async generateRecap(context, imageUrls = []) {
+    if (!this.enabled) throw new Error("AI features not configured");
+
+    const images = [];
+    for (const url of imageUrls.slice(0, 4)) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        const arrayBuffer = await response.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = response.headers.get("content-type") || "image/jpeg";
+        images.push({ inlineData: { mimeType, data: base64 } });
+      } catch (e) {
+        continue;
+      }
+    }
+
+    const prompt = `You are creating a ${context.period} memory recap for a personal photos app.
+
+Context:
+- Period: ${context.dateRange}
+- Total memories: ${context.memoryCount}
+- Locations visited: ${context.locations.join(", ") || "various places"}
+- Moods captured: ${context.moods.join(", ") || "mixed"}
+- Memory titles: ${context.titles.slice(0, 10).join(", ") || "various moments"}
+
+${images.length > 0 ? "I'm also sharing some representative photos from this period." : ""}
+
+Respond with ONLY a JSON object (no markdown, no code blocks):
+{
+  "story": "A warm, reflective 3-4 sentence narrative about this ${context.period}. Reference specific locations and moods. Make it personal and nostalgic.",
+  "theme": "A creative 2-4 word theme for this ${context.period} (e.g., 'Golden Autumn Days', 'City Adventures')",
+  "highlights": ["highlight 1", "highlight 2", "highlight 3"]
+}`;
+
+    let result;
+    try {
+      const content =
+        images.length > 0 ? [...images, { text: prompt }] : [{ text: prompt }];
+      result = await this.model.generateContent(content);
+    } catch (aiErr) {
+      console.error(`Gemini API error (generateRecap):`, aiErr.message);
+      if (aiErr.message && aiErr.message.includes("429")) {
+        throw new Error("AI quota exceeded. Please try again later.");
+      }
+      throw new Error(`Gemini API error: ${aiErr.message}`);
+    }
+
+    const text = result.response.text().trim();
+    const cleaned = text
+      .replace(/^```(?:json)?\n?/i, "")
+      .replace(/\n?```$/i, "")
+      .trim();
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (parseErr) {
+      return {
+        story: text.slice(0, 400),
+        theme: context.period === "weekly" ? "Your Week" : "Your Month",
+        highlights: [],
+      };
+    }
   }
 }
 

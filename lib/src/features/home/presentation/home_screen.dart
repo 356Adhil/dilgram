@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../timeline/presentation/timeline_screen.dart';
 import '../../ai/presentation/ai_screen.dart';
 import '../../../services/upload_service.dart';
@@ -44,7 +45,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final uploadCount = ref.watch(activeUploadCountProvider);
+    final uploadState = ref.watch(uploadStateProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
       body: Stack(
@@ -55,15 +57,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: const [TimelineScreen(), AiScreen()],
           ),
 
-          // Upload indicator — subtle bar at top
-          if (uploadCount > 0)
+          // Upload status banner
+          if (uploadState.status != UploadStatus.idle)
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: SafeArea(
                 bottom: false,
-                child: const LinearProgressIndicator(minHeight: 2),
+                child: _UploadBanner(state: uploadState, theme: theme),
               ),
             ),
 
@@ -190,7 +192,7 @@ class _BottomNavBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   _NavItem(
-                    icon: Icons.auto_awesome,
+                    icon: Icons.explore_outlined,
                     isActive: currentIndex == 1,
                     onTap: () => onTap(1),
                   ),
@@ -318,6 +320,126 @@ class _OptionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _UploadBanner extends StatelessWidget {
+  final UploadState state;
+  final ThemeData theme;
+
+  const _UploadBanner({required this.state, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = state.status == UploadStatus.done;
+    final isError = state.status == UploadStatus.error;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isError
+            ? theme.colorScheme.errorContainer
+            : isDone
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.9)
+            : theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Status icon
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isError
+                  ? theme.colorScheme.error.withValues(alpha: 0.12)
+                  : isDone
+                  ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                  : theme.colorScheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: isError
+                ? Icon(
+                    Icons.error_outline,
+                    size: 20,
+                    color: theme.colorScheme.error,
+                  )
+                : isDone
+                ? Icon(
+                    Icons.check_circle_outline,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  )
+                : SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          // Status text + progress bar
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  state.statusText,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isError
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+                if (state.status == UploadStatus.uploading &&
+                    state.progress > 0) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: state.progress,
+                      minHeight: 3,
+                      backgroundColor: theme.colorScheme.primary.withValues(
+                        alpha: 0.12,
+                      ),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // Media type icon
+          if (!isDone && !isError)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(
+                state.isVideo ? Icons.videocam_rounded : Icons.photo_camera,
+                size: 18,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -16,15 +16,15 @@ class CloudinaryService {
       const uploadOptions = {
         resource_type: resourceType,
         folder,
-        quality: "auto",
+        quality: "auto:best",
       };
 
-      // For videos, generate a thumbnail
+      // For videos, generate a thumbnail asynchronously for faster response
       if (type === "video") {
         uploadOptions.eager = [
           { width: 400, height: 400, crop: "fill", format: "jpg" },
         ];
-        uploadOptions.eager_async = false;
+        uploadOptions.eager_async = true;
       }
 
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -49,8 +49,18 @@ class CloudinaryService {
             }
 
             // Add thumbnail URL for videos
-            if (type === "video" && result.eager && result.eager[0]) {
-              response.thumbnailUrl = result.eager[0].secure_url;
+            if (type === "video") {
+              if (result.eager && result.eager[0]) {
+                response.thumbnailUrl = result.eager[0].secure_url;
+              } else {
+                // Construct thumbnail URL from video URL (eager_async may not be ready)
+                response.thumbnailUrl = result.secure_url
+                  .replace(
+                    "/video/upload/",
+                    "/video/upload/w_400,h_400,c_fill/",
+                  )
+                  .replace(/\.\w+$/, ".jpg");
+              }
             }
 
             resolve(response);

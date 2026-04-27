@@ -91,11 +91,13 @@ class SettingsScreen extends ConsumerWidget {
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
               ),
               _SettingsSwitch(
-                icon: Icons.fingerprint_rounded,
+                icon: authState.hasFaceId
+                    ? Icons.face_outlined
+                    : Icons.fingerprint_rounded,
                 iconColor: Colors.green,
                 title: AppStrings.biometric,
                 subtitle: authState.biometricAvailable
-                    ? 'Face ID or fingerprint'
+                    ? (authState.hasFaceId ? 'Face ID' : 'Fingerprint')
                     : 'Not available',
                 value: authState.biometricEnabled,
                 enabled: authState.biometricAvailable,

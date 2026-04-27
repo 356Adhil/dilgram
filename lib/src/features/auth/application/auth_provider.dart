@@ -12,29 +12,39 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>(
 
 enum AuthStatus { unknown, needsSetup, locked, authenticated }
 
+enum AppBiometricType { face, fingerprint, other }
+
 class AuthState {
   final AuthStatus status;
   final bool biometricEnabled;
   final bool biometricAvailable;
+  final List<AppBiometricType> availableBiometrics;
   final String? error;
 
   const AuthState({
     this.status = AuthStatus.unknown,
     this.biometricEnabled = false,
     this.biometricAvailable = false,
+    this.availableBiometrics = const [],
     this.error,
   });
+
+  bool get hasFaceId => availableBiometrics.contains(AppBiometricType.face);
+  bool get hasFingerprint =>
+      availableBiometrics.contains(AppBiometricType.fingerprint);
 
   AuthState copyWith({
     AuthStatus? status,
     bool? biometricEnabled,
     bool? biometricAvailable,
+    List<AppBiometricType>? availableBiometrics,
     String? error,
   }) {
     return AuthState(
       status: status ?? this.status,
       biometricEnabled: biometricEnabled ?? this.biometricEnabled,
       biometricAvailable: biometricAvailable ?? this.biometricAvailable,
+      availableBiometrics: availableBiometrics ?? this.availableBiometrics,
       error: error,
     );
   }
@@ -59,10 +69,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final biometricEnabled = await _storage.read(key: _biometricKey);
 
     bool biometricAvailable = false;
+    List<AppBiometricType> bioTypes = [];
     try {
       biometricAvailable =
           await _localAuth.canCheckBiometrics ||
           await _localAuth.isDeviceSupported();
+      if (biometricAvailable) {
+        final available = await _localAuth.getAvailableBiometrics();
+        for (final b in available) {
+          if (b == BiometricType.face) {
+            bioTypes.add(AppBiometricType.face);
+          } else if (b == BiometricType.fingerprint) {
+            bioTypes.add(AppBiometricType.fingerprint);
+          } else {
+            bioTypes.add(AppBiometricType.other);
+          }
+        }
+      }
     } catch (_) {}
 
     // Auto-setup default PIN on first launch
@@ -79,6 +102,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       status: AuthStatus.locked,
       biometricEnabled: (biometricEnabled == 'true'),
       biometricAvailable: biometricAvailable,
+      availableBiometrics: bioTypes,
     );
   }
 
@@ -167,11 +191,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<bool> authenticateWithBiometric() async {
     try {
+      // Check available biometrics first
+      final availableBiometrics = await _localAuth.getAvailableBiometrics();
+      if (availableBiometrics.isEmpty) {
+        state = state.copyWith(error: 'No biometrics enrolled on this device');
+        return false;
+      }
+
       final didAuthenticate = await _localAuth.authenticate(
         localizedReason: 'Unlock Dilgram with biometrics',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: true,
+          useErrorDialogs: true,
+          sensitiveTransaction: false,
         ),
       );
       if (didAuthenticate) {
@@ -181,6 +214,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
       return didAuthenticate;
     } catch (e) {
+      state = state.copyWith(error: 'Biometric auth failed: $e');
       return false;
     }
   }
