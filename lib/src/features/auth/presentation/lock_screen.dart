@@ -112,49 +112,24 @@ class _LockScreenState extends ConsumerState<LockScreen>
       body: SafeArea(
         child: Column(
           children: [
-            const Spacer(flex: 2),
-            // App Logo
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.primary,
-                    theme.colorScheme.tertiary,
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 40,
-              ),
-            ),
-            const SizedBox(height: 24),
+            const Spacer(flex: 3),
+            // Greeting
             Text(
-              AppStrings.appName,
+              'Welcome back',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 28,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: -0.5,
+                color: theme.colorScheme.onSurface,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               AppStrings.enterPin,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
               ),
             ),
             const SizedBox(height: 40),
@@ -178,9 +153,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOutCubic,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    width: isFilled ? 18 : 14,
-                    height: isFilled ? 18 : 14,
+                    margin: const EdgeInsets.symmetric(horizontal: 14),
+                    width: isFilled ? 16 : 12,
+                    height: isFilled ? 16 : 12,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isFilled
@@ -190,9 +165,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
                         color: isFilled
                             ? theme.colorScheme.primary
                             : theme.colorScheme.onSurface.withValues(
-                                alpha: 0.3,
+                                alpha: 0.18,
                               ),
-                        width: 2,
+                        width: 1.5,
                       ),
                     ),
                   );
@@ -203,7 +178,8 @@ class _LockScreenState extends ConsumerState<LockScreen>
               const SizedBox(height: 16),
               Text(
                 authState.error!,
-                style: theme.textTheme.bodySmall?.copyWith(
+                style: GoogleFonts.inter(
+                  fontSize: 13,
                   color: theme.colorScheme.error,
                   fontWeight: FontWeight.w500,
                 ),
@@ -216,13 +192,21 @@ class _LockScreenState extends ConsumerState<LockScreen>
             // Biometric button
             if (authState.biometricEnabled && authState.biometricAvailable)
               Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: IconButton(
-                  onPressed: _tryBiometric,
-                  icon: Icon(
-                    Icons.fingerprint,
-                    size: 48,
-                    color: theme.colorScheme.primary,
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: _tryBiometric,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                    ),
+                    child: Icon(
+                      Icons.fingerprint,
+                      size: 32,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
               ),
@@ -246,7 +230,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
       child: Column(
         children: buttons.map((row) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: row.map((label) {
@@ -261,8 +245,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
                       onPressed: _onDeletePressed,
                       icon: Icon(
                         Icons.backspace_outlined,
+                        size: 22,
                         color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.7,
+                          alpha: 0.5,
                         ),
                       ),
                     ),
@@ -300,12 +285,13 @@ class _NumberButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: isDark
-          ? Colors.white.withValues(alpha: 0.06)
-          : Colors.black.withValues(alpha: 0.04),
+          ? Colors.white.withValues(alpha: 0.04)
+          : Colors.black.withValues(alpha: 0.03),
       borderRadius: BorderRadius.circular(36),
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(36),
+        splashColor: theme.colorScheme.primary.withValues(alpha: 0.1),
         child: SizedBox(
           width: 72,
           height: 72,
@@ -313,8 +299,8 @@ class _NumberButton extends StatelessWidget {
             child: Text(
               label,
               style: GoogleFonts.inter(
-                fontSize: 28,
-                fontWeight: FontWeight.w500,
+                fontSize: 26,
+                fontWeight: FontWeight.w400,
                 color: theme.colorScheme.onSurface,
               ),
             ),

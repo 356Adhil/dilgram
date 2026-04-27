@@ -1,11 +1,13 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../application/timeline_provider.dart';
 import '../domain/memory_model.dart';
 import '../../settings/application/theme_provider.dart';
@@ -23,6 +25,7 @@ class TimelineScreen extends ConsumerStatefulWidget {
 
 class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   final _scrollController = ScrollController();
+  bool _showScrollToTop = false;
 
   @override
   void initState() {
@@ -34,6 +37,10 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       ref.read(timelineProvider.notifier).loadMore();
+    }
+    final show = _scrollController.offset > 400;
+    if (show != _showScrollToTop) {
+      setState(() => _showScrollToTop = show);
     }
   }
 
@@ -49,43 +56,62 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            floating: true,
-            snap: true,
-            title: Text(
-              AppStrings.appName,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
-            ),
-            actions: [
-              IconButton(
-                onPressed: () {
-                  ref.read(themeModeProvider.notifier).toggle();
-                  HapticFeedback.lightImpact();
-                },
-                icon: Icon(
-                  theme.brightness == Brightness.dark
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
+      body: Stack(
+        children: [
+          NestedScrollView(
+            controller: _scrollController,
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverAppBar(
+                floating: true,
+                snap: true,
+                backgroundColor: theme.scaffoldBackgroundColor.withValues(
+                  alpha: 0.85,
                 ),
-              ),
-              IconButton(
-                onPressed: () => context.push('/settings'),
-                icon: const Icon(Icons.settings_outlined),
+                surfaceTintColor: Colors.transparent,
+                flexibleSpace: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(color: Colors.transparent),
+                  ),
+                ),
+                title: Text(AppStrings.appName),
+                actions: [
+                  IconButton(
+                    onPressed: () {
+                      ref.read(themeModeProvider.notifier).toggle();
+                      HapticFeedback.lightImpact();
+                    },
+                    icon: Icon(
+                      theme.brightness == Brightness.dark
+                          ? Icons.light_mode_outlined
+                          : Icons.dark_mode_outlined,
+                      size: 22,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: theme.colorScheme.surfaceContainerHigh
+                          .withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => context.push('/settings'),
+                    icon: const Icon(Icons.settings_outlined, size: 22),
+                    style: IconButton.styleFrom(
+                      backgroundColor: theme.colorScheme.surfaceContainerHigh
+                          .withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ),
             ],
+            body: RefreshIndicator(
+              onRefresh: () => ref.read(timelineProvider.notifier).refresh(),
+              color: theme.colorScheme.primary,
+              child: _buildBody(timeline, theme),
+            ),
           ),
         ],
-        body: RefreshIndicator(
-          onRefresh: () => ref.read(timelineProvider.notifier).refresh(),
-          child: _buildBody(timeline, theme),
-        ),
       ),
       floatingActionButton: _buildFAB(context, theme),
     );
@@ -112,13 +138,22 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     final entries = grouped.entries.toList();
 
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 8, bottom: 100),
+      padding: const EdgeInsets.only(top: 4, bottom: 120),
       itemCount: entries.length + (timeline.isLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= entries.length) {
-          return const Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(child: CircularProgressIndicator()),
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
           );
         }
 
@@ -136,22 +171,33 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
 
   Widget _buildMemoryGrid(List<Memory> memories, ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: MasonryGridView.count(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 0.75,
-        ),
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
         itemCount: memories.length,
         itemBuilder: (context, index) {
           return MemoryCard(
-            memory: memories[index],
-            onTap: () => _openMemory(memories[index]),
-          );
+                memory: memories[index],
+                index: index,
+                onTap: () => _openMemory(memories[index]),
+              )
+              .animate()
+              .fadeIn(
+                duration: 400.ms,
+                delay: (60 * index).ms,
+                curve: Curves.easeOut,
+              )
+              .slideY(
+                begin: 0.05,
+                end: 0,
+                duration: 400.ms,
+                delay: (60 * index).ms,
+                curve: Curves.easeOut,
+              );
         },
       ),
     );
@@ -196,32 +242,31 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Shimmer.fromColors(
-        baseColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-        highlightColor: isDark ? Colors.grey.shade700 : Colors.grey.shade100,
+        baseColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+        highlightColor: isDark ? Colors.grey.shade700 : Colors.grey.shade50,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 80,
-              height: 20,
+              width: 70,
+              height: 14,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
             const SizedBox(height: 16),
-            GridView.builder(
+            MasonryGridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 0.75,
-              ),
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
               itemCount: 6,
               itemBuilder: (context, index) {
+                final heights = [200.0, 260.0, 180.0, 240.0, 220.0, 190.0];
                 return Container(
+                  height: heights[index],
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
@@ -268,11 +313,35 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   }
 
   Widget _buildFAB(BuildContext context, ThemeData theme) {
-    return FloatingActionButton.extended(
-      onPressed: () => _showAddOptions(context),
-      icon: const Icon(Icons.add_a_photo_outlined),
-      label: const Text('Capture'),
-      elevation: 4,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_showScrollToTop)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: FloatingActionButton.small(
+              heroTag: 'scroll_top',
+              onPressed: () {
+                _scrollController.animateTo(
+                  0,
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                );
+              },
+              backgroundColor: theme.colorScheme.surfaceContainerHigh,
+              elevation: 0,
+              child: Icon(
+                Icons.arrow_upward_rounded,
+                color: theme.colorScheme.onSurface,
+                size: 20,
+              ),
+            ),
+          ),
+        FloatingActionButton(
+          onPressed: () => _showAddOptions(context),
+          child: const Icon(Icons.add_rounded, size: 28),
+        ),
+      ],
     );
   }
 
@@ -282,21 +351,24 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              Text('Add Memory', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 20),
               _OptionTile(
                 icon: Icons.camera_alt_outlined,
                 title: AppStrings.takePhoto,

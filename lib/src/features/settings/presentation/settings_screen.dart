@@ -18,96 +18,129 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          AppStrings.settings,
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-        ),
+        title: const Text('Settings'),
         leading: IconButton(
           onPressed: () => context.pop(),
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_rounded),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
-          // Appearance Section
-          _SectionHeader(title: AppStrings.appearance),
-          _SettingsTile(
-            icon: Icons.palette_outlined,
-            iconColor: theme.colorScheme.primary,
-            title: 'Theme',
-            subtitle: _themeLabel(themeMode),
-            onTap: () => _showThemeDialog(context, ref, themeMode),
+          // App header
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome,
+                    color: theme.colorScheme.primary,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(AppStrings.appName, style: theme.textTheme.titleLarge),
+                const SizedBox(height: 2),
+                Text('Version 1.0.0', style: theme.textTheme.bodySmall),
+              ],
+            ),
           ),
 
-          const SizedBox(height: 8),
-
-          // Security Section
-          _SectionHeader(title: AppStrings.security),
-          _SettingsTile(
-            icon: Icons.lock_outline,
-            iconColor: Colors.orange,
-            title: AppStrings.changePin,
-            subtitle: 'Update your 4-digit PIN',
-            onTap: () => _showChangePinDialog(context, ref),
-          ),
-          _SettingsSwitch(
-            icon: Icons.fingerprint,
-            iconColor: Colors.green,
-            title: AppStrings.biometric,
-            subtitle: authState.biometricAvailable
-                ? 'Use Face ID or fingerprint to unlock'
-                : 'Not available on this device',
-            value: authState.biometricEnabled,
-            enabled: authState.biometricAvailable,
-            onChanged: (value) {
-              ref.read(authProvider.notifier).toggleBiometric(value);
-              HapticFeedback.selectionClick();
-            },
+          // Appearance
+          _SectionLabel(title: AppStrings.appearance),
+          _SettingsGroup(
+            children: [
+              _SettingsTile(
+                icon: Icons.palette_outlined,
+                iconColor: theme.colorScheme.primary,
+                title: 'Theme',
+                trailing: Text(
+                  _themeLabel(themeMode),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                onTap: () => _showThemeDialog(context, ref, themeMode),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
 
-          // About Section
-          _SectionHeader(title: AppStrings.about),
-          _SettingsTile(
-            icon: Icons.info_outline,
-            iconColor: Colors.blue,
-            title: AppStrings.appName,
-            subtitle: 'Version 1.0.0',
-            onTap: () {},
+          // Security
+          _SectionLabel(title: AppStrings.security),
+          _SettingsGroup(
+            children: [
+              _SettingsTile(
+                icon: Icons.lock_outline_rounded,
+                iconColor: Colors.orange,
+                title: AppStrings.changePin,
+                onTap: () => _showChangePinDialog(context, ref),
+              ),
+              Divider(
+                height: 1,
+                indent: 56,
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+              ),
+              _SettingsSwitch(
+                icon: Icons.fingerprint_rounded,
+                iconColor: Colors.green,
+                title: AppStrings.biometric,
+                subtitle: authState.biometricAvailable
+                    ? 'Face ID or fingerprint'
+                    : 'Not available',
+                value: authState.biometricEnabled,
+                enabled: authState.biometricAvailable,
+                onChanged: (value) {
+                  ref.read(authProvider.notifier).toggleBiometric(value);
+                  HapticFeedback.selectionClick();
+                },
+              ),
+            ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
           // Danger Zone
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: OutlinedButton.icon(
-              onPressed: () => _showClearDataDialog(context, ref),
-              icon: const Icon(Icons.delete_forever_outlined),
-              label: const Text(AppStrings.clearData),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-                side: BorderSide(
-                  color: theme.colorScheme.error.withValues(alpha: 0.5),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
+          FilledButton.tonal(
+            onPressed: () => _showClearDataDialog(context, ref),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error.withValues(alpha: 0.08),
+              foregroundColor: theme.colorScheme.error,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.delete_forever_outlined,
+                  size: 20,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(width: 8),
+                Text(AppStrings.clearData),
+              ],
             ),
           ),
 
           const SizedBox(height: 48),
 
-          // Footer
           Center(
             child: Text(
               'Made with ❤️ for you',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.25),
               ),
             ),
           ),
@@ -136,7 +169,6 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Choose Theme'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -146,8 +178,8 @@ class SettingsScreen extends ConsumerWidget {
               title: Text(_themeLabel(mode)),
               leading: Icon(
                 isSelected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
                     : null,
@@ -174,7 +206,6 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Change PIN'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -185,7 +216,7 @@ class SettingsScreen extends ConsumerWidget {
               maxLength: 4,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'Current PIN',
+                hintText: 'Current PIN',
                 counterText: '',
               ),
             ),
@@ -196,7 +227,7 @@ class SettingsScreen extends ConsumerWidget {
               maxLength: 4,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'New PIN',
+                hintText: 'New PIN',
                 counterText: '',
               ),
             ),
@@ -207,7 +238,7 @@ class SettingsScreen extends ConsumerWidget {
               maxLength: 4,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'Confirm New PIN',
+                hintText: 'Confirm New PIN',
                 counterText: '',
               ),
             ),
@@ -259,11 +290,10 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
             Icon(
-              Icons.warning_amber,
+              Icons.warning_amber_rounded,
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(width: 8),
@@ -295,24 +325,42 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
+class _SectionLabel extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  const _SectionLabel({required this.title});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
       child: Text(
         title.toUpperCase(),
         style: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.primary,
-          letterSpacing: 1.2,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+          letterSpacing: 1,
         ),
       ),
+    );
+  }
+}
+
+class _SettingsGroup extends StatelessWidget {
+  final List<Widget> children;
+  const _SettingsGroup({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(mainAxisSize: MainAxisSize.min, children: children),
     );
   }
 }
@@ -321,14 +369,14 @@ class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
-  final String subtitle;
+  final Widget? trailing;
   final VoidCallback onTap;
 
   const _SettingsTile({
     required this.icon,
     required this.iconColor,
     required this.title,
-    required this.subtitle,
+    this.trailing,
     required this.onTap,
   });
 
@@ -336,29 +384,27 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: iconColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
+          color: iconColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: iconColor, size: 20),
+        child: Icon(icon, color: iconColor, size: 18),
       ),
       title: Text(
         title,
         style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
       ),
-      subtitle: Text(
-        subtitle,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-        ),
-      ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-      ),
+      trailing:
+          trailing ??
+          Icon(
+            Icons.chevron_right_rounded,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.25),
+            size: 22,
+          ),
       onTap: onTap,
     );
   }
@@ -387,14 +433,15 @@ class _SettingsSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SwitchListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       secondary: Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: iconColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
+          color: iconColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: iconColor, size: 20),
+        child: Icon(icon, color: iconColor, size: 18),
       ),
       title: Text(
         title,
@@ -403,7 +450,7 @@ class _SettingsSwitch extends StatelessWidget {
       subtitle: Text(
         subtitle,
         style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
         ),
       ),
       value: value,
