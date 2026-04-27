@@ -700,60 +700,65 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
                     ),
                   const SizedBox(height: 12),
                   // Floating action bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 24),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _ActionButton(
-                              icon: memory.isFavorite
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              label: 'Favorite',
-                              onTap: () {
-                                ref
-                                    .read(timelineProvider.notifier)
-                                    .toggleFavorite(_currentMemoryId);
-                                HapticFeedback.lightImpact();
-                              },
-                              color: memory.isFavorite
-                                  ? Colors.redAccent
-                                  : null,
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.12),
                             ),
-                            _ActionButton(
-                              icon: Icons.share_outlined,
-                              label: 'Share',
-                              onTap: () => _shareMemory(memory),
-                            ),
-                            _ActionButton(
-                              icon: Icons.info_outline_rounded,
-                              label: 'Details',
-                              onTap: () => _scrollToDetails(),
-                            ),
-                            _ActionButton(
-                              icon: Icons.edit_outlined,
-                              label: 'Edit',
-                              onTap: _showEditSheet,
-                            ),
-                            _ActionButton(
-                              icon: Icons.delete_outline_rounded,
-                              label: 'Delete',
-                              onTap: _deleteMemory,
-                              isDestructive: true,
-                            ),
-                          ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _ActionButton(
+                                icon: memory.isFavorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                label: 'Favorite',
+                                onTap: () {
+                                  ref
+                                      .read(timelineProvider.notifier)
+                                      .toggleFavorite(_currentMemoryId);
+                                  HapticFeedback.lightImpact();
+                                },
+                                color: memory.isFavorite
+                                    ? Colors.redAccent
+                                    : null,
+                              ),
+                              _ActionButton(
+                                icon: Icons.share_outlined,
+                                label: 'Share',
+                                onTap: () => _shareMemory(memory),
+                              ),
+                              _ActionButton(
+                                icon: Icons.info_outline_rounded,
+                                label: 'Details',
+                                onTap: () => _scrollToDetails(),
+                              ),
+                              _ActionButton(
+                                icon: Icons.edit_outlined,
+                                label: 'Edit',
+                                onTap: _showEditSheet,
+                              ),
+                              _ActionButton(
+                                icon: Icons.delete_outline_rounded,
+                                label: 'Delete',
+                                onTap: _deleteMemory,
+                                isDestructive: true,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -768,6 +773,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
   }
 
   Widget _buildDetailsContent(Memory memory, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       color: theme.colorScheme.surface,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 48),
@@ -779,42 +785,58 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
             Text(
               memory.title!,
               style: GoogleFonts.plusJakartaSans(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
                 color: theme.colorScheme.onSurface,
+                letterSpacing: -0.5,
+                height: 1.2,
               ),
             ),
 
           // Date & time
           Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 20),
+            padding: const EdgeInsets.only(top: 6, bottom: 20),
             child: Text(
               DateFormat('EEEE, MMMM d, y · h:mm a').format(memory.createdAt),
               style: GoogleFonts.inter(
                 fontSize: 13,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                letterSpacing: 0.1,
               ),
             ),
           ),
 
-          // Description
+          // Description in a subtle card
           if (memory.description != null && memory.description!.isNotEmpty) ...[
-            Text(
-              memory.description!,
-              style: GoogleFonts.inter(
-                fontSize: 15,
-                height: 1.7,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.black.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Text(
+                memory.description!,
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  height: 1.7,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
           ],
 
-          // Location + Mood inline row
+          // Location + Mood chips
           if (memory.location?.name != null ||
               (memory.mood != null && memory.mood!.isNotEmpty))
             Padding(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.only(bottom: 20),
               child: Wrap(
                 spacing: 10,
                 runSpacing: 10,
@@ -844,21 +866,19 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
               children: memory.tags.map((tag) {
                 return Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
+                    horizontal: 14,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHigh.withValues(
-                      alpha: 0.6,
-                    ),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '#$tag',
                     style: GoogleFonts.inter(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.7),
                     ),
                   ),
                 );
@@ -870,68 +890,109 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
           // People
           if (memory.people.isNotEmpty) ...[
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 12),
               child: Text(
-                'People',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
+                'PEOPLE',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                  letterSpacing: 1.2,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
                 ),
               ),
             ),
-            ...memory.people.map((person) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: theme.colorScheme.primary.withValues(
-                        alpha: 0.08,
-                      ),
-                      child: Text(
-                        person.label.isNotEmpty
-                            ? person.label[0].toUpperCase()
-                            : '?',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            person.label,
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                          if (person.description != null)
-                            Text(
-                              person.description!,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: theme.colorScheme.onSurface.withValues(
-                                  alpha: 0.45,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.black.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                ),
+              ),
+              child: Column(
+                children: memory.people.asMap().entries.map((entry) {
+                  final person = entry.value;
+                  final isLast = entry.key == memory.people.length - 1;
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    theme.colorScheme.primary.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                    theme.colorScheme.tertiary.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  person.label.isNotEmpty
+                                      ? person.label[0].toUpperCase()
+                                      : '?',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.primary,
+                                  ),
                                 ),
                               ),
                             ),
-                        ],
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    person.label,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  if (person.description != null)
+                                    Text(
+                                      person.description!,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.4),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                      if (!isLast)
+                        Divider(
+                          height: 1,
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.06,
+                          ),
+                        ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
             const SizedBox(height: 24),
           ],
 
@@ -940,38 +1001,60 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen>
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLow.withValues(
-                  alpha: 0.5,
-                ),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.black.withValues(alpha: 0.02),
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.photo_camera_outlined,
-                    size: 18,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _buildMediaSummary(memory),
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.photo_camera_outlined,
+                      size: 16,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.6),
                     ),
                   ),
-                  const Spacer(),
-                  if (memory.mediaItems[_currentMediaIndex].width != null &&
-                      memory.mediaItems[_currentMediaIndex].height != null)
-                    Text(
-                      '${memory.mediaItems[_currentMediaIndex].width} × ${memory.mediaItems[_currentMediaIndex].height}',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.35,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _buildMediaSummary(memory),
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.6,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (memory.mediaItems[_currentMediaIndex].width !=
+                                null &&
+                            memory.mediaItems[_currentMediaIndex].height !=
+                                null)
+                          Text(
+                            '${memory.mediaItems[_currentMediaIndex].width} × ${memory.mediaItems[_currentMediaIndex].height}',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
