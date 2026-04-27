@@ -175,4 +175,37 @@ class ApiService {
     final response = await _dio.get(ApiConstants.memoriesStats);
     return response.data;
   }
+
+  // AI
+  Future<bool> getAiStatus() async {
+    try {
+      final response = await _dio.get(ApiConstants.aiStatus);
+      return response.data['enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> analyzeMemory(
+    String memoryId, {
+    bool apply = false,
+  }) async {
+    final response = await _dio.post(
+      '${ApiConstants.aiAnalyze(memoryId)}${apply ? '?apply=true' : ''}',
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getHighlights() async {
+    final response = await _dio.get(ApiConstants.aiHighlights);
+    return response.data;
+  }
+
+  Future<String> chatWithAi(String message) async {
+    final response = await _dio.post(
+      ApiConstants.aiChat,
+      data: {'message': message},
+    );
+    return response.data['reply'] as String;
+  }
 }

@@ -8,6 +8,7 @@ const errorHandler = require("./middleware/errorHandler");
 
 const authRoutes = require("./routes/auth");
 const memoryRoutes = require("./routes/memories");
+const aiRoutes = require("./routes/ai");
 
 // Catch unhandled rejections and exceptions
 process.on("unhandledRejection", (err) => {
@@ -30,6 +31,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/memories", memoryRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

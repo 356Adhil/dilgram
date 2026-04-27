@@ -16,6 +16,13 @@ class ApiConstants {
       '/memories/$memoryId/media/$mediaId';
   static const String memoriesStats = '/memories/stats';
 
+  // AI
+  static const String aiStatus = '/ai/status';
+  static String aiAnalyze(String memoryId) => '/ai/analyze/$memoryId';
+  static const String aiAnalyzeUrl = '/ai/analyze-url';
+  static const String aiHighlights = '/ai/highlights';
+  static const String aiChat = '/ai/chat';
+
   // Timeouts
   static const Duration connectionTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 60);

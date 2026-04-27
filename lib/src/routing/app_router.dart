@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/lock_screen.dart';
 import '../features/auth/presentation/setup_pin_screen.dart';
-import '../features/timeline/presentation/timeline_screen.dart';
+import '../features/home/presentation/home_screen.dart';
 import '../features/camera/presentation/camera_screen.dart';
 import '../features/camera/presentation/preview_screen.dart';
 import '../features/media_viewer/presentation/media_viewer_screen.dart';
@@ -37,7 +37,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/home',
         pageBuilder: (context, state) => CustomTransitionPage(
           key: state.pageKey,
-          child: const TimelineScreen(),
+          child: const HomeScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
