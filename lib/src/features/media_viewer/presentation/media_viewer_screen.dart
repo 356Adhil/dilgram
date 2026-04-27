@@ -42,6 +42,15 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final memory = _memory;
+      if (memory != null && memory.mediaItems.isNotEmpty) {
+        final item = memory.mediaItems[_currentIndex];
+        if (item.isVideo) {
+          _initVideo(item.url);
+        }
+      }
+    });
   }
 
   Memory? get _memory =>
