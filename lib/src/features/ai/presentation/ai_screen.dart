@@ -9,12 +9,13 @@ import 'package:go_router/go_router.dart';
 import '../../timeline/domain/memory_model.dart';
 import '../../../services/api_service.dart';
 
-// Discover data provider
+// Discover data provider — SWR: returns cached then refreshes
 final discoverProvider = FutureProvider.autoDispose<Map<String, dynamic>>((
   ref,
 ) async {
-  final api = ref.read(apiServiceProvider);
-  return api.getDiscover();
+  final cached = ref.read(cachedApiProvider);
+  final data = await cached.getDiscover();
+  return data ?? {};
 });
 
 class AiScreen extends ConsumerStatefulWidget {
@@ -101,6 +102,13 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         ),
         actions: [
           IconButton(
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              context.push('/notifications');
+            },
+            icon: const Icon(Icons.notifications_outlined, size: 22),
+          ),
+          IconButton(
             onPressed: () => ref.invalidate(discoverProvider),
             icon: const Icon(Icons.refresh_rounded, size: 22),
           ),
@@ -135,6 +143,11 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     final people = (data['people'] as List<dynamic>?) ?? [];
     final places = (data['places'] as List<dynamic>?) ?? [];
     final stats = data['stats'] as Map<String, dynamic>?;
+    final moodTimeline = (data['moodTimeline'] as List<dynamic>?) ?? [];
+    final colors = (data['colors'] as List<dynamic>?) ?? [];
+    final vibes = (data['vibes'] as List<dynamic>?) ?? [];
+    final hasMapData = data['hasMapData'] as bool? ?? false;
+    final mapPinCount = data['mapPinCount'] as int? ?? 0;
 
     return ListView(
       controller: _scrollController,
@@ -363,6 +376,384 @@ class _AiScreenState extends ConsumerState<AiScreen> {
               },
             ),
           ),
+          const SizedBox(height: 16),
+        ],
+
+        // Mood Timeline mini
+        if (moodTimeline.isNotEmpty) ...[
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              context.push('/mood-timeline');
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.mood_rounded, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Mood Timeline',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'See Full →',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: moodTimeline.take(7).map((day) {
+                      final mood =
+                          (day as Map<String, dynamic>)['mood'] as String? ??
+                          '';
+                      return _MoodDot(mood: mood);
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ).animate().fadeIn(duration: 400.ms, delay: 350.ms),
+          const SizedBox(height: 16),
+        ],
+
+        // Colors
+        if (colors.isNotEmpty) ...[
+          _SectionTitle(title: 'Your Colors'),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 56,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: colors.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final c = colors[index] as Map<String, dynamic>;
+                final hex = c['hex'] as String? ?? '#888888';
+                final count = c['count'] as int? ?? 0;
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/color', extra: {'hex': hex});
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _parseHex(hex),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.1,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$count',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().fadeIn(
+                  duration: 300.ms,
+                  delay: (400 + index * 40).ms,
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Vibes
+        if (vibes.isNotEmpty) ...[
+          _SectionTitle(title: 'Vibes'),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: vibes.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final v = vibes[index] as Map<String, dynamic>;
+                final name = v['name'] as String? ?? '';
+                final count = v['count'] as int? ?? 0;
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/vibe', extra: {'vibe': name});
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.15,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      '✨ $name ($count)',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ).animate().fadeIn(
+                  duration: 300.ms,
+                  delay: (400 + index * 40).ms,
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // AI Journal preview
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            context.push('/journal');
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.tertiary.withValues(alpha: 0.1),
+                  theme.colorScheme.tertiary.withValues(alpha: 0.03),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.auto_stories_rounded,
+                    color: theme.colorScheme.tertiary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Journal',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Read your AI-written diary entry for today',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                ),
+              ],
+            ),
+          ),
+        ).animate().fadeIn(duration: 400.ms, delay: 450.ms),
+        const SizedBox(height: 12),
+
+        // AI Mashup preview
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            context.push('/mashup');
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.secondary.withValues(alpha: 0.1),
+                  theme.colorScheme.secondary.withValues(alpha: 0.03),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.colorScheme.secondary.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.secondary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: theme.colorScheme.secondary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Mashup',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Generate a story from filtered memories',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                ),
+              ],
+            ),
+          ),
+        ).animate().fadeIn(duration: 400.ms, delay: 500.ms),
+        const SizedBox(height: 12),
+
+        // Memory Map preview
+        if (hasMapData) ...[
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              context.push('/map');
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF26A69A).withValues(alpha: 0.1),
+                    const Color(0xFF26A69A).withValues(alpha: 0.03),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFF26A69A).withValues(alpha: 0.12),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF26A69A).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.map_rounded,
+                      color: Color(0xFF26A69A),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Memory Map',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '$mapPinCount locations on the map',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                  ),
+                ],
+              ),
+            ),
+          ).animate().fadeIn(duration: 400.ms, delay: 550.ms),
           const SizedBox(height: 16),
         ],
 
@@ -954,6 +1345,55 @@ class _TypingIndicator extends StatelessWidget {
               .then()
               .fadeOut(duration: 400.ms);
         }),
+      ),
+    );
+  }
+}
+
+Color _parseHex(String hex) {
+  final h = hex.replaceAll('#', '');
+  if (h.length == 6) {
+    return Color(int.parse('FF$h', radix: 16));
+  }
+  return Colors.grey;
+}
+
+class _MoodDot extends StatelessWidget {
+  final String mood;
+  const _MoodDot({required this.mood});
+
+  static const Map<String, Color> moodColors = {
+    'happy': Color(0xFFFFD54F),
+    'joyful': Color(0xFFFFE082),
+    'excited': Color(0xFFFF7043),
+    'peaceful': Color(0xFF81C784),
+    'grateful': Color(0xFFAED581),
+    'loved': Color(0xFFE91E63),
+    'nostalgic': Color(0xFF7E57C2),
+    'thoughtful': Color(0xFF42A5F5),
+    'calm': Color(0xFF80DEEA),
+    'hopeful': Color(0xFF4FC3F7),
+    'proud': Color(0xFFFFB74D),
+    'playful': Color(0xFFFF8A65),
+    'bittersweet': Color(0xFFCE93D8),
+    'melancholic': Color(0xFF5C6BC0),
+    'lonely': Color(0xFF78909C),
+    'anxious': Color(0xFFFFCC80),
+    'sad': Color(0xFF90A4AE),
+    'angry': Color(0xFFEF5350),
+    'tired': Color(0xFFBCAAA4),
+    'confused': Color(0xFFB0BEC5),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = moodColors[mood.toLowerCase()] ?? Colors.grey;
+    return Tooltip(
+      message: mood,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
     );
   }

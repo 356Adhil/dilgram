@@ -142,10 +142,14 @@ router.get("/grouped", async (req, res, next) => {
       for (const m of memories) {
         if (m.people && m.people.length > 0) {
           for (const person of m.people) {
-            const key = person.label || person.description || "Unknown";
+            const rawLabel = person.label || person.description || "Unknown";
+            const key = rawLabel
+              .toLowerCase()
+              .trim()
+              .replace(/^(a |an |the )/, "");
             if (!peopleMap[key]) {
               peopleMap[key] = {
-                label: key,
+                label: rawLabel,
                 description: person.description || null,
                 count: 0,
                 thumbnail: null,
@@ -169,6 +173,39 @@ router.get("/grouped", async (req, res, next) => {
     res
       .status(400)
       .json({ error: "Invalid groupBy. Use: location, month, people" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/memories/map
+ * Get all geotagged memories for map display
+ */
+router.get("/map", async (req, res, next) => {
+  try {
+    const memories = await Memory.find({
+      "location.lat": { $exists: true, $ne: null },
+      "location.lng": { $exists: true, $ne: null },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const pins = memories.map((m) => {
+      const photo = m.mediaItems.find((i) => i.type === "photo");
+      return {
+        id: m._id,
+        lat: m.location.lat,
+        lng: m.location.lng,
+        name: m.location.name || null,
+        title: m.title || null,
+        thumbnail: photo ? photo.cloudinaryUrl : null,
+        mood: m.mood || null,
+        createdAt: m.createdAt,
+      };
+    });
+
+    res.json({ pins });
   } catch (err) {
     next(err);
   }
@@ -346,6 +383,8 @@ router.post("/", upload.array("media", 10), async (req, res, next) => {
     let aiTags = [];
     let aiMood = null;
     let aiPeople = [];
+    let aiColors = [];
+    let aiVibes = [];
 
     // Auto-caption with Gemini (blocking so the response includes AI data)
     if (gemini.enabled) {
@@ -356,6 +395,8 @@ router.post("/", upload.array("media", 10), async (req, res, next) => {
           aiTags = analysis.tags || [];
           aiMood = analysis.mood || null;
           aiPeople = analysis.people || [];
+          aiColors = analysis.colors || [];
+          aiVibes = analysis.vibes || [];
           if (!title && analysis.title) aiTitle = analysis.title;
           if (!description && analysis.description)
             aiDescription = analysis.description;
@@ -390,6 +431,8 @@ router.post("/", upload.array("media", 10), async (req, res, next) => {
       mood: aiMood,
       location,
       people: aiPeople,
+      colors: aiColors,
+      vibes: aiVibes,
       mediaItems,
     });
 

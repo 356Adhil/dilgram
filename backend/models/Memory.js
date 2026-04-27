@@ -65,6 +65,14 @@ const memorySchema = new mongoose.Schema(
       ],
       default: [],
     },
+    colors: {
+      type: [String],
+      default: [],
+    },
+    vibes: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

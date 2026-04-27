@@ -2,8 +2,8 @@ class ApiConstants {
   ApiConstants._();
 
   // Base URL
-  static const String baseUrl = 'https://dilgram.onrender.com/api';
-  // static const String baseUrl = 'http://192.168.29.216:3000/api';
+  // static const String baseUrl = 'https://dilgram.onrender.com/api';
+  static const String baseUrl = 'http://192.168.29.216:3000/api';
 
   // Auth
   static const String setupPin = '/auth/setup-pin';
@@ -30,12 +30,20 @@ class ApiConstants {
   static const String aiWeeklyRecap = '/ai/weekly-recap';
   static const String aiMonthlyRecap = '/ai/monthly-recap';
   static const String aiDiscover = '/ai/discover';
+  static const String aiJournal = '/ai/journal';
+  static const String aiMashup = '/ai/mashup';
+  static const String aiNotifications = '/ai/notifications';
+  static const String aiMoodData = '/ai/mood-data';
+  static const String aiColorMemories = '/ai/color-memories';
+  static const String aiVibeMemories = '/ai/vibe-memories';
 
   // Memories - Grouped
   static const String memoriesGrouped = '/memories/grouped';
+  static const String memoriesMap = '/memories/map';
 
   // Timeouts
   static const Duration connectionTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 60);
+  static const Duration aiTimeout = Duration(seconds: 120);
   static const Duration uploadTimeout = Duration(minutes: 5);
 }

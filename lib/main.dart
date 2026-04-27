@@ -11,5 +11,9 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  // Configure image cache: keep max 100 images, 50 MB limit, 7-day stale
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+  PaintingBinding.instance.imageCache.maximumSize = 100;
+
   runApp(const ProviderScope(child: DilgramApp()));
 }

@@ -3,8 +3,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/api_constants.dart';
+import 'cache_service.dart';
 
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
+
+final cachedApiProvider = Provider<CachedApiService>((ref) {
+  return CachedApiService(
+    ref.read(apiServiceProvider),
+    ref.read(cacheServiceProvider),
+  );
+});
 
 class ApiService {
   late final Dio _dio;
@@ -268,5 +276,204 @@ class ApiService {
       queryParameters: {'by': by},
     );
     return response.data;
+  }
+
+  // Memory Map
+  Future<Map<String, dynamic>> getMemoryMap() async {
+    final response = await _dio.get(ApiConstants.memoriesMap);
+    return response.data;
+  }
+
+  // AI Journal
+  Future<Map<String, dynamic>> getJournal({String? date}) async {
+    final response = await _dio.get(
+      ApiConstants.aiJournal,
+      queryParameters: date != null ? {'date': date} : null,
+      options: Options(receiveTimeout: ApiConstants.aiTimeout),
+    );
+    return response.data;
+  }
+
+  // AI Mashup
+  Future<Map<String, dynamic>> getMashup({
+    String? person,
+    String? place,
+    String? vibe,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.aiMashup,
+      data: {
+        if (person != null) 'person': person,
+        if (place != null) 'place': place,
+        if (vibe != null) 'vibe': vibe,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+      },
+      options: Options(receiveTimeout: ApiConstants.aiTimeout),
+    );
+    return response.data;
+  }
+
+  // AI Notifications
+  Future<Map<String, dynamic>> getNotifications() async {
+    final response = await _dio.get(ApiConstants.aiNotifications);
+    return response.data;
+  }
+
+  // Mood Data
+  Future<Map<String, dynamic>> getMoodData() async {
+    final response = await _dio.get(ApiConstants.aiMoodData);
+    return response.data;
+  }
+
+  // Color Memories
+  Future<Map<String, dynamic>> getColorMemories(String hex) async {
+    final response = await _dio.get(
+      ApiConstants.aiColorMemories,
+      queryParameters: {'hex': hex},
+    );
+    return response.data;
+  }
+
+  // Vibe Memories
+  Future<Map<String, dynamic>> getVibeMemories(String vibe) async {
+    final response = await _dio.get(
+      ApiConstants.aiVibeMemories,
+      queryParameters: {'vibe': vibe},
+    );
+    return response.data;
+  }
+}
+
+/// SWR wrapper: returns cached data immediately, then fetches fresh data.
+/// Callers get data instantly (if cached) and fresh data via callback.
+class CachedApiService {
+  final ApiService _api;
+  final CacheService _cache;
+
+  CachedApiService(this._api, this._cache);
+
+  /// Generic SWR fetch. Returns cached data if available (may be stale),
+  /// then always fetches fresh data from network.
+  /// [onFresh] is called when network data arrives.
+  Future<Map<String, dynamic>?> swr(
+    String cacheKey,
+    Future<Map<String, dynamic>> Function() fetcher, {
+    void Function(Map<String, dynamic>)? onFresh,
+    Duration ttl = const Duration(minutes: 10),
+  }) async {
+    // 1. Check cache
+    final cached = await _cache.get(cacheKey);
+    Map<String, dynamic>? staleData = cached?.data;
+
+    // 2. If cache is fresh, return it and skip network
+    if (cached != null && cached.isFresh) {
+      // Still fire-and-forget a refresh for next time
+      _refreshInBackground(cacheKey, fetcher, onFresh, ttl);
+      return staleData;
+    }
+
+    // 3. Cache is stale or missing — try network
+    try {
+      final fresh = await fetcher();
+      await _cache.put(cacheKey, fresh, ttl: ttl);
+      onFresh?.call(fresh);
+      return fresh;
+    } catch (_) {
+      // Network failed — return stale data if available
+      return staleData;
+    }
+  }
+
+  void _refreshInBackground(
+    String key,
+    Future<Map<String, dynamic>> Function() fetcher,
+    void Function(Map<String, dynamic>)? onFresh,
+    Duration ttl,
+  ) {
+    fetcher()
+        .then((fresh) async {
+          await _cache.put(key, fresh, ttl: ttl);
+          onFresh?.call(fresh);
+        })
+        .catchError((_) {});
+  }
+
+  // ── Convenience methods for common screens ──────────────────
+
+  Future<Map<String, dynamic>?> getDiscover({
+    void Function(Map<String, dynamic>)? onFresh,
+  }) {
+    return swr('discover', _api.getDiscover, onFresh: onFresh);
+  }
+
+  Future<Map<String, dynamic>?> getMemoryMap({
+    void Function(Map<String, dynamic>)? onFresh,
+  }) {
+    return swr('memory_map', _api.getMemoryMap, onFresh: onFresh);
+  }
+
+  Future<Map<String, dynamic>?> getMoodData({
+    void Function(Map<String, dynamic>)? onFresh,
+  }) {
+    return swr('mood_data', _api.getMoodData, onFresh: onFresh);
+  }
+
+  Future<Map<String, dynamic>?> getNotifications({
+    void Function(Map<String, dynamic>)? onFresh,
+  }) {
+    return swr(
+      'notifications',
+      _api.getNotifications,
+      onFresh: onFresh,
+      ttl: const Duration(minutes: 5),
+    );
+  }
+
+  /// Memories list page cache for timeline (page-keyed).
+  Future<List<dynamic>?> getMemories({
+    int page = 1,
+    int limit = 20,
+    void Function(List<dynamic>)? onFresh,
+  }) async {
+    final key = 'memories_p${page}_l$limit';
+    final cached = await _cache.get(key);
+
+    if (cached != null && cached.isFresh) {
+      // Background refresh
+      _api
+          .getMemories(page: page, limit: limit)
+          .then((fresh) async {
+            await _cache.put(key, {
+              'list': fresh,
+            }, ttl: const Duration(minutes: 5));
+            onFresh?.call(fresh);
+          })
+          .catchError((_) {});
+      return (cached.data['list'] as List<dynamic>?) ?? [];
+    }
+
+    try {
+      final fresh = await _api.getMemories(page: page, limit: limit);
+      await _cache.put(key, {'list': fresh}, ttl: const Duration(minutes: 5));
+      return fresh;
+    } catch (_) {
+      if (cached != null) {
+        return (cached.data['list'] as List<dynamic>?) ?? [];
+      }
+      rethrow;
+    }
+  }
+
+  /// Invalidate specific keys after mutations.
+  Future<void> invalidate(String key) => _cache.remove(key);
+
+  /// Invalidate all timeline pages.
+  Future<void> invalidateTimeline() async {
+    for (int i = 1; i <= 20; i++) {
+      await _cache.remove('memories_p${i}_l20');
+    }
   }
 }

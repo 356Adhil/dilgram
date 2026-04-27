@@ -10,6 +10,13 @@ import '../features/media_viewer/presentation/media_viewer_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/ai/presentation/recap_screen.dart';
 import '../features/ai/presentation/person_memories_screen.dart';
+import '../features/ai/presentation/mood_timeline_screen.dart';
+import '../features/ai/presentation/color_memories_screen.dart';
+import '../features/ai/presentation/vibe_memories_screen.dart';
+import '../features/ai/presentation/journal_screen.dart';
+import '../features/ai/presentation/mashup_screen.dart';
+import '../features/map/presentation/memory_map_screen.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -162,6 +169,162 @@ final routerProvider = Provider<GoRouter>((ref) {
                 },
           );
         },
+      ),
+      GoRoute(
+        path: '/mood-timeline',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const MoodTimelineScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(1, 0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+              child: child,
+            );
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/map',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const MemoryMapScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(1, 0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+              child: child,
+            );
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/color',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: ColorMemoriesScreen(
+              hex: extra['hex'] as String? ?? '#000000',
+            ),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(1, 0),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ),
+                        ),
+                    child: child,
+                  );
+                },
+          );
+        },
+      ),
+      GoRoute(
+        path: '/vibe',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: VibeMemoriesScreen(vibe: extra['vibe'] as String? ?? ''),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(1, 0),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ),
+                        ),
+                    child: child,
+                  );
+                },
+          );
+        },
+      ),
+      GoRoute(
+        path: '/journal',
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return CustomTransitionPage(
+            key: state.pageKey,
+            child: JournalScreen(initialDate: extra?['date'] as String?),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          );
+        },
+      ),
+      GoRoute(
+        path: '/mashup',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const MashupScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0, 1),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+              child: child,
+            );
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/notifications',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const NotificationsScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(1, 0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+              child: child,
+            );
+          },
+        ),
       ),
     ],
   );

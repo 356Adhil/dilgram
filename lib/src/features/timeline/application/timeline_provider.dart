@@ -4,7 +4,10 @@ import '../../../services/api_service.dart';
 
 final timelineProvider = StateNotifierProvider<TimelineNotifier, TimelineState>(
   (ref) {
-    return TimelineNotifier(ref.read(apiServiceProvider));
+    return TimelineNotifier(
+      ref.read(apiServiceProvider),
+      ref.read(cachedApiProvider),
+    );
   },
 );
 
@@ -69,8 +72,9 @@ class TimelineState {
 
 class TimelineNotifier extends StateNotifier<TimelineState> {
   final ApiService _api;
+  final CachedApiService _cached;
 
-  TimelineNotifier(this._api) : super(const TimelineState()) {
+  TimelineNotifier(this._api, this._cached) : super(const TimelineState()) {
     loadMemories();
   }
 
@@ -79,16 +83,37 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final data = await _api.getMemories(page: 1, limit: 20);
-      final memories = data
-          .map((e) => Memory.fromJson(e as Map<String, dynamic>))
-          .toList();
-      state = state.copyWith(
-        memories: memories,
-        isLoading: false,
-        currentPage: 1,
-        hasMore: memories.length >= 20,
+      final data = await _cached.getMemories(
+        page: 1,
+        limit: 20,
+        onFresh: (freshData) {
+          if (!mounted) return;
+          final memories = freshData
+              .map((e) => Memory.fromJson(e as Map<String, dynamic>))
+              .toList();
+          state = state.copyWith(
+            memories: memories,
+            currentPage: 1,
+            hasMore: memories.length >= 20,
+          );
+        },
       );
+      if (data != null) {
+        final memories = data
+            .map((e) => Memory.fromJson(e as Map<String, dynamic>))
+            .toList();
+        state = state.copyWith(
+          memories: memories,
+          isLoading: false,
+          currentPage: 1,
+          hasMore: memories.length >= 20,
+        );
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Failed to load memories',
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -103,8 +128,8 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
 
     try {
       final nextPage = state.currentPage + 1;
-      final data = await _api.getMemories(page: nextPage, limit: 20);
-      final newMemories = data
+      final data = await _cached.getMemories(page: nextPage, limit: 20);
+      final newMemories = (data ?? [])
           .map((e) => Memory.fromJson(e as Map<String, dynamic>))
           .toList();
       state = state.copyWith(
@@ -125,12 +150,14 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
 
   void addMemory(Memory memory) {
     state = state.copyWith(memories: [memory, ...state.memories]);
+    _cached.invalidateTimeline();
   }
 
   void removeMemory(String id) {
     state = state.copyWith(
       memories: state.memories.where((m) => m.id != id).toList(),
     );
+    _cached.invalidateTimeline();
   }
 
   void updateMemory(Memory memory) {
